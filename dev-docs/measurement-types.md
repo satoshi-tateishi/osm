@@ -35,7 +35,7 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 | M: / R: (dataChanel / referenceChanel) | チャンネル番号 | 測定用(M)・基準用(R)として使うオーディオ入力チャンネル |
 | audio input device | デバイス名 | 使用する入力デバイス。ローカル測定のみ変更可(`isLocal`) |
 | average type | off / LPF / FIFO | 測定値の時間平均化方式。`off`=平均なし、`LPF`=ベッセルローパスフィルタによる指数移動平均、`FIFO`=直近N回分の単純移動平均 |
-| average count | 1〜100 | `FIFO`選択時の平均回数 |
+| average count | 1〜100 | `FIFO`選択時の平均回数。更新周期は固定80ms(`TIMER_INTERVAL`)なので、count=12〜13で約1秒、25で約2秒相当 |
 | LPF frequency | 0.25Hz / 0.5Hz / 1Hz | `LPF`選択時のカットオフ周波数(`Filter::Frequency`, `src/math/bessellpf.h`)。値が小さいほど滑らかだが追従が遅い |
 | +/- (polarity) | ON/OFF | 測定チャンネルの極性反転 |
 | リセットボタン | - | 平均化バッファ・遅延推定などをリセット(`resetAverage()`) |
@@ -43,6 +43,8 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 | offset (reference offset) | -90〜90 dB | 基準(R)チャンネルのレベルオフセット |
 | gain | -90〜90 dB | 測定(M)チャンネルの入力ゲイン補正 |
 | "94 dB"ボタン | - | 94dB SPLの校正音(ピストンフォン等)を鳴らした状態で押すと、現在のレベルから自動的にgainを逆算して適用(`applyAutoGain`) |
+
+> このフォークではMeasurementソースの既定値を変更している: `average type`は`LPF`→`FIFO`・`average count`は`1`→`12`、`Transform mode`は`FFT14`→`LTW`。window functionは"Hann"に固定(他の選択肢はUIから削除)。
 | delay (estimated delay delta) | サンプル数(ms表示) | 測定chとreference chの時間ずれ補正。右の"estimated"ボタンで自動推定値を適用可能 |
 
 ---
@@ -56,10 +58,12 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 | x from / x to | Hz(`xLowLimit`〜`xHighLimit`) | 表示する周波数範囲 |
 | y from / y to | dB | 表示するレベル範囲 |
 | mode | line / bars / lines | 描画方式。`line`=折れ線、`bars`=オクターブバンドの棒グラフ、`lines`=生ライン(FFTビンそのまま、ppo指定不可) |
-| ppo (points per octave) | 1 / 3 / 6 / 12 / 24 / 48 / off | 1オクターブあたりの表示点数(スムージング相当)。`bars`モードでは`off`にできない(自動で12に補正される) |
+| smoothing(旧"ppo") | 1/1 oct 〜 1/48 oct / off | フラクショナルオクターブ帯域平均によるスムージング。Smaartの"1/3 oct"等と同義(帯域内のパワーを積算して`10*log10()`でdB化する、エネルギー平均で実装済み)。`bars`モードでは`off`にできない(自動で1/12 octに補正される) |
 | スケール(無題のコンボ) | dBfs / SPL / phons | 縦軸の単位。`dBfs`=フルスケール比、`SPL`=校正済み音圧レベル、`phons`=等ラウドネス曲線補正後の値 |
 | hold peaks | ON/OFF | ピークホールド表示。`line`モードでは非表示 |
 | 表示ソース選択 | - | 複数ソースがあるとき、このチャートに表示するソースを絞り込む |
+
+> このフォークではx from/x toのデフォルトを`40Hz`〜`20,000Hz`にしている(本家は`20Hz`〜`20,000Hz`。`src/chart/rtaplot.cpp`のコンストラクタで`m_x.setReset(40.f, 20'000.f)`)。smoothingのデフォルトも`off` → `1/6 oct`に変更している。
 
 ---
 
@@ -72,11 +76,11 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 | x from / x to | Hz | 表示する周波数範囲 |
 | y from / y to | dB | 表示するレベル範囲 |
 | invert | ON/OFF | Y軸を反転 |
-| ppo (points per octave) | 1 / 3 / 6 / 12 / 24 / 48 | 1オクターブあたりの表示点数(スムージング) |
+| smoothing(旧"ppo") | 1/1 oct 〜 1/48 oct | フラクショナルオクターブ帯域平均によるスムージング。Smaartの"1/3 oct"等と同義。dBモードは帯域内のパワーを積算して`10*log10()`でdB化するエネルギー平均(このフォークで修正済み。本家はdB値をそのまま算術平均していた) |
 | use coherence | ON/OFF | コヒーレンス値をアルファ(不透明度)チャンネルとして使い、信頼度の低い(ノイズの多い)周波数帯を薄く表示する |
 | coherence threshold | 0.0〜1.0 | 上記を使う際のしきい値 |
 
-> このフォークではY axis modeを`dB`固定にしている(`Linear`/`Impedance`モードとセンサー抵抗設定のUIは削除済み。`src/chart/magnitudeplot.cpp`の`setSettings()`で保存済み設定からの`mode`復元も行わない)。
+> このフォークではY axis modeを`dB`固定にしている(`Linear`/`Impedance`モードとセンサー抵抗設定のUIは削除済み。`src/chart/magnitudeplot.cpp`の`setSettings()`で保存済み設定からの`mode`復元も行わない)。smoothingのデフォルトも`1/12 oct` → `1/6 oct`に変更している。
 | 表示ソース選択 | - | 表示対象ソースの絞り込み |
 
 ---

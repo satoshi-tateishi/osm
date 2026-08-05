@@ -26,5 +26,110 @@
   - X軸: `20Hz〜20,000Hz` → `40Hz〜20,000Hz`(`MagnitudePlot`コンストラクタで`m_x.setReset(40.f, 20'000.f)`)
   - Y軸(dBモード): `-18dB〜18dB` → `-12dB〜12dB`(`MagnitudePlot::setMode()`のdBケースで`m_y.setReset(-12.f, 12.f)`)
 - **軸範囲入力欄の小数点表示を廃止**: `x from`/`x to`/`y from`/`y to`の`FloatSpinBox`に`decimals: 0`を指定し、整数表示に統一。
+- **`x from`/`x to`のナッジ(上下の増減ボタン)を非表示化**: `FloatSpinBox`に`indicators: false`を指定。
+- **`x from`/`x to`の見た目調整**: ナッジを消したことで2つの入力欄が視覚的に連結して見えていたため、間に`" - "`区切りの`Label`を追加。あわせて`implicitWidth`を`170`→`90`に縮小し(`Layout.fillWidth: true`も削除)、`20000`程度の桁数に収まる幅にした。
+- **`y from`/`y to`の幅調整**: `y from`/`y to`はナッジ(+/-)を残す方針のため`x`と同じ90pxにはせず、`implicitWidth`を`170`→`150`に調整(`Layout.fillWidth: true`は削除)。ナッジ付きでも窮屈にならない幅として150pxを採用。x軸グループとy軸グループの間には`Layout.preferredWidth: 15`の`Item`(スペーサー)を挿入して間隔を空けた。
+- **"use coherence"のしきい値入力欄も同じ幅に統一**: `coherenceThreshold`の`FloatSpinBox`の`Layout.preferredWidth`を`200`→`150`に変更し、`y from`/`y to`と幅を揃えた。
+- **dBモードの帯域平均をパワー(エネルギー)平均に変更**: `src/chart/opengl/magnitudeseriesrenderer.cpp`。修正前は各FFTビンのdB値をそのまま算術平均していたが(log領域の平均)、修正後は線形振幅の2乗(パワー)を積算し、`10*log10(積算パワー/count)`でdB化してから帯域代表値とするようにした。`iterateForSpline`テンプレートの`beforeSpline`フックを使い、帯域代表値の生成部分だけを差し替える形で実装(スプライン補間・GPU描画コード・シェーダーは無変更)。Linear/Impedanceモードの平均方法は変更していない。
+  - 理由: 聴感・IEC規格のオクターブバンド分析はエネルギー(パワー)平均が標準であり、dB値の算術平均は物理的な積分と異なる(静かな谷がピークを不当に引き下げる)ため。
+
+## Measurementソースの既定値変更(全チャート共通)
+
+`src/meta/metameasurement.cpp`(`Measurement`コンストラクタ)
+
+- **average type**: `LPF` → `FIFO`、**average count**: `1` → `12`(約1秒相当、`TIMER_INTERVAL=80ms`換算)に変更。
+- **Transform mode**: `FFT14` → `LTW`(`Mode::LFT`)に変更。
+- 影響範囲は`Meta::Measurement`を継承する`Measurement`(実際の測定ソース)と`Remote::Items::MeasurementItem`(リモート同期用)の両方。チャート種別に関わらず、測定ソース自体の設定のため全測定タイプに影響する。
+
+**バグ修正(既定値変更に伴い顕在化)**: `src/source/measurement.cpp`のコンストラクタで、`setAverage(...)`(起動時の設定復元)が`averageChanged`シグナルと`updateAverage()`(FIFOバッファの深さを実際に反映する処理)の`connect()`より先に実行されていたため、起動直後は「表示上はFIFO:12だが実際のバッファ深さは`Averaging`クラスの初期値である1のまま」という不具合があった。本家からある潜在バグだが、以前は`average`の既定値が`1`(かつ`averageType`既定値が`LPF`)だったため偶然表面化していなかった。`average`の既定値を`12`に変更したことで顕在化(スピンボックスをナッジすると`setAverage()`が再度呼ばれ`averageChanged`が発火し正しく反映されるため、症状が「操作すると直る」ように見えていた)。コンストラクタ内で`updateAverage()`を明示的に呼び出すよう修正して解消。
+  - 注意: この修正はOpenGLバックエンドのみに適用。Metalバックエンド(`src/chart/metal/magnitudeseriesnode.mm`)は同様の修正をしておらず未検証(このビルドはOPENGLバックエンドのみコンパイルしているため)。
+- **"ppo"を"smoothing"に、表示を"1/N oct"形式に変更**: `TitledCombo`の`title`/`tooltip`を`"ppo"`/`"points per octave"`から空文字/`"smoothing"`に変更。`model`を生の数値配列(`[1,3,6,12,24,48]`)から表示用文字列配列(`["1/1 oct","1/3 oct",...,"1/48 oct"]`)に変更し、実際のppo値は`ppoValues`という別プロパティで対応付け。Smaartの"1/3 oct"等の表記に合わせた。
+- **smoothingのデフォルトを"1/6 oct"に変更**: `MagnitudePlot`コンストラクタで`m_pointsPerOctave = 6;`を追加(基底クラス`FrequencyBasedPlot`の既定値`12`を上書き)。
+
+## Spectrum(RTA)測定のカスタマイズ
+
+`src/chart/rtaplot.cpp`、`qml/Plot/RTAProperties.qml`
+
+- **デフォルトのX軸範囲を変更**: `20Hz〜20,000Hz` → `40Hz〜20,000Hz`(`RTAPlot`コンストラクタで`m_x.setReset(40.f, 20'000.f)`)。Y軸範囲・小数点表示は変更なし。
+- **`x from`/`x to`のナッジ(上下の増減ボタン)を非表示化**: `SelectableSpinBox`(標準の`SpinBox`)に`down.indicator.width: 0`/`up.indicator.width: 0`を指定(`FloatSpinBox`の`indicators`相当をSpinBox側で直接指定)。
+- **`x from`/`x to`の見た目調整**: 間に`" - "`区切りの`Label`を追加し、`implicitWidth`を`170`→`90`に縮小(`Layout.fillWidth: true`も削除)。Magnitudeと同様の対応。
+- **`y from`/`y to`の幅調整**: ナッジ(+/-)は残したまま`implicitWidth`を`170`→`150`に調整(`Layout.fillWidth: true`は削除)。x軸グループとy軸グループの間に`Layout.preferredWidth: 15`の`Item`(スペーサー)を挿入。
+- **"ppo"を"smoothing"に、表示を"1/N oct"形式に変更**: Magnitudeと同様の対応(`"off"`の選択肢のみ`ppoValues`に`0`として維持)。
+- **smoothingのデフォルトを"1/6 oct"に変更**: `RTAPlot`コンストラクタで`m_pointsPerOctave = 0;`(off)だったのを`= 6;`に変更。
+- (参考・変更なし) Spectrumの帯域平均は元々パワー(エネルギー)平均で実装済み(`RTASeriesRenderer::renderPPOLine()`/`renderBars()`で`module(i)^2`を積算してから`10*log10()`)だったため、Magnitudeのような修正は不要だった。
+
+## チャート上のジェスチャー操作の無効化(Magnitude / Spectrum)
+
+`qml/Chart.qml`
+
+- Magnitude・Spectrumのチャート表示エリア上での、トラックパッドのピンチイン/アウト(2本指ズーム)・2本指ドラッグ(パン)・マウスホイール/2本指スクロールによるズームを無効化した。`type === "Magnitude" || type === "Spectrum"`のときは`touchArea.onGestureStarted`と`opener.onWheel`の先頭で処理を`return`するようにしている。
+- 目的: 軸範囲(x from/x to/y from/y to)の変更を、誤操作を避けるためプロパティパネルからの入力のみに限定するため。
+- ダブルクリックでの軸リセット(`chart.plot.resetAxis()`)と、右クリックでの計算機ポップアップ(`openCalculator`)は影響を受けず、従来通り動作する。
+- 他の測定タイプ(Phase, Coherence, Group Delayなど)ではジェスチャー操作は無効化しておらず、従来通り。
+
+## "save chart as an image"ボタンの非表示化(全測定タイプ共通)
+
+`qml/Plot/*.qml`(全12ファイル: RTA, Magnitude, Phase, Impulse, Step, Coherence, GroupDelay, PhaseDelay, Spectrogram, CrestFactor, Nyquist, Levelの各Propertiesパネル)
+
+- 各プロパティパネル右上のカメラアイコンボタン(チャートを画像として保存する機能)を`visible: false`にして非表示化。機能自体(`FileDialog`・`onClicked: fileDialog.open()`)は削除せず残置しているため、必要になれば`visible: false`を外すだけで復活できる。
+
+## 右サイドバー下部の"ABOUT"・Wi-Fiリモートアイコンの非表示化
+
+`qml/SideBar.qml`
+
+- ロゴ+"ABOUT"表示(クリックでAboutポップアップを開く`MouseArea`)と、Wi-Fiリモート機能(`qrc:/RemoteProperties.qml`を開く`Button`)をそれぞれ`visible: false`にして非表示化。機能自体は削除していない。
+
+## メニューの"About"・"Check for update"の非表示化
+
+`qml/menu/Top.qml`、`qml/menu/Side.qml`
+
+- macOSの通常メニューバー(`Top.qml`)の"Help"メニュー内`MenuItem`("About" / "Check for update")にそれぞれ`visible: false`と`enabled: false`を指定。
+- あわせて割り当てられていたショートカット`F2`(About)・`F3`(Check for update)も削除し、キー操作からも呼び出せないようにした。
+- 狭幅ウィンドウ時に表示されるハンバーガーメニュー(`Side.qml`)の`ListModel`には元々"About"項目はなく、"Check for update"の`ListElement`のみ存在したため、こちらは`ListElement`ごと削除(`ListModel`は`MenuItem`と違い項目単位の`visible`切り替えができないため)。
+
+## ラベルの日本語化(部分的)
+
+`qml/source/MeasurementProperties.qml`
+
+- Measurementソース設定内の"apply estimated delay"ツールチップを"推定ディレイを適用"に、"estimated delay delta: ..."ツールチップを"推定ディレイとの差分: ..."に変更。他のラベルは英語のまま(全体の日本語化は行っていない、個別の要望に応じた部分対応)。
+
+## window functionを"Hann"固定化
+
+`qml/source/MeasurementProperties.qml`
+
+- window function(窓関数)選択の`DropDown`を`visible: false`で非表示化し、`Component.onCompleted`で`dataObjectData.window`を"Hann"のインデックスに強制設定するようにした。保存済み設定/プロジェクトファイルに別の窓関数が記録されていても、パネル表示時に必ずHannへ上書きされる。
+- 理由: 連続信号(音楽・ピンクノイズ)を扱う伝達関数測定ではHannが標準的で妥当なため、他の窓関数(Rectangular/FlatTopなど特殊用途向け)を選ばせる必要がないと判断。
+
+## Measurementチャンネルの極性反転("inverse polarity at measurement chanel")の非表示化
+
+`qml/source/MeasurementProperties.qml`
+
+- "+/–"ボタン(`dataObjectData.polarity`)を`visible: false`で非表示化し、`Component.onCompleted`で`dataObjectData.polarity = false`を強制設定して正相に固定。既定値自体が`false`(`Meta::Measurement`コンストラクタ)なので実質的な動作変更はない。Measurementソース共通の設定のため、Magnitudeに限らず全チャートに影響する。
+
+## FIFO平均のaverage countに実時間(秒)表示を追加
+
+`src/source/measurement.h`、`qml/source/MeasurementProperties.qml`
+
+- `Measurement`に`Q_PROPERTY(float averageTickSeconds READ averageTickSeconds CONSTANT)`を追加。`TIMER_INTERVAL(80ms)`をQML側から秒単位で参照できるようにした(`static float averageTickSeconds() { return TIMER_INTERVAL / 1000.f; }`)。
+- `average count`の`SelectableSpinBox`を`ColumnLayout`で包み、上に小さな`Label`(`≈%1s`、`dataObjectData.average * dataObjectData.averageTickSeconds`)を追加。スピンボックス自体の編集・表示形式(整数値)は変更していないため、`valueFromText`のパース処理を複雑化させずに済んでいる。
+- スペースの都合上、横ではなく上に小さく表示する形にした。
+
+## Generatorの"Controlled generator"の非表示化
+
+`qml/GeneratorProperties.qml`
+
+- リモートのジェネレータを選択する`selectTarget`の`DropDown`("Controlled generator")を`visible: false`で非表示化。ABOUT/Wi-Fiリモートアイコンと同様、リモート機能系のUI。
+
+## Generatorの"Signal Type"を"Pink"固定化
+
+`qml/GeneratorProperties.qml`
+
+- 信号タイプ選択の`DropDown`(id: `type`)を`visible: false`で非表示化し、`Component.onCompleted`で`control.currentGenerator.type`を`generatorModel.types`内の"Pink"のインデックスに強制設定。`GeneratorThread`のソースリスト順(`src/generator/generatorthread.cpp`)でPinkNoiseは先頭(index 0)だが、ハードコードせず`model.indexOf("Pink")`で検索している。
+
+## Generatorの"even inv"(偶数チャンネル逆相)の非表示化
+
+`qml/GeneratorProperties.qml`
+
+- "inverse polarity at even channels"ツールチップの`Button`(id無し、text: "even inv")を`visible: false`で非表示化し、`Component.onCompleted`で`control.currentGenerator.evenPolarity = false`を強制設定して正相に固定。既定値自体が`false`(`GeneratorThread`コンストラクタ)なので実質的な動作変更はなく、UIから触れなくするための対応。
 
 測定タイプごとの設定項目の詳細は[measurement-types.md](measurement-types.md)を参照。
