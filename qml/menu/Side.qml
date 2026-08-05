@@ -120,13 +120,6 @@ Drawer {
             }
             separator: true
         }
-
-        ListElement {
-            name: qsTr("Check for update")
-            onclick: function() {
-                update.show();
-            }
-        }
     }
 
     ColumnLayout {

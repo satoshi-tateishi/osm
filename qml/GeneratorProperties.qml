@@ -37,6 +37,7 @@ Item {
             //generator type
             DropDown {
                 id: type
+                visible: false
                 implicitWidth: 140
                 currentIndex: control.currentGenerator.type
                 model: generatorModel.types
@@ -44,6 +45,13 @@ Item {
 
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("signal type")
+
+                Component.onCompleted: {
+                    var pinkIndex = model.indexOf("Pink");
+                    if (pinkIndex >= 0) {
+                        control.currentGenerator.type = pinkIndex;
+                    }
+                }
             }
 
             SelectableSpinBox {
@@ -171,6 +179,7 @@ Item {
 
             DropDown {
                 id: selectTarget
+                visible: false
                 enabled: !control.currentGenerator.enabled
                 model: remoteClient.generatorsList
                 currentIndex: remoteClient.generatorsList.indexOf(
@@ -218,6 +227,7 @@ Item {
             }
 
             Button {
+                visible: false
                 text: "even inv"
                 checkable: true
                 enabled: selectTarget.currentIndex === 0
@@ -227,6 +237,10 @@ Item {
 
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("inverse polarity at even channels")
+
+                Component.onCompleted: {
+                    control.currentGenerator.evenPolarity = false;
+                }
             }
 
             GeneratorChannelSelect {

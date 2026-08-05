@@ -216,6 +216,7 @@ Item {
             Layout.bottomMargin: 8
 
             MouseArea {
+                visible: false
                 Layout.alignment: Qt.AlignCenter
                 Layout.preferredHeight: aboutButton.height + aboutButton.topPadding + aboutButton.bottomPadding
                 Layout.fillWidth: true
@@ -274,6 +275,7 @@ Item {
             }
 
             Button {
+                visible: false
                 font.family: "Osm"
                 text: "\ue807"
                 flat: true

@@ -258,12 +258,14 @@ MenuBar {
         MenuItem {
             text: qsTr("About")
             onTriggered: aboutpopup.open();
-            shortcut: "F2"
+            visible: false
+            enabled: false
         }
         MenuItem {
             text: qsTr("Check for update")
-            shortcut: "F3"
             onTriggered: update.show();
+            visible: false
+            enabled: false
         }
     }
 }
