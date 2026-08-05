@@ -43,10 +43,6 @@ Popup {
             text: qsTr("Checking for update...")
         }
 
-    Component.onCompleted: {
-        check (true);
-    }
-
     function show() {
         update.text = qsTr("Checking for update...")
         open();
