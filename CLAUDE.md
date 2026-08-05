@@ -28,7 +28,11 @@ Open Sound Meter (OpenSoundMeter) — Qt 5.15 / C++17製のクロスプラット
 
 ## このフォークでの変更点(本家との差分)
 
-このフォークは開発に不要なファイルを整理済み。本家に追従する際はこの差分を意識すること。
+このフォークは開発に不要なファイルを整理済み。本家に追従する際はこの差分を意識すること。詳細な一覧・変更理由は[dev-docs/customizations.md](dev-docs/customizations.md)を参照。
 
-- 削除: `overview.key`(41MBのKeynote資料)、`.travis.yml`(未使用のTravis CI設定)、`.github/FUNDING.yml`(本家作者への寄付リンク)、`CONTRIBUTING`(本家への貢献ガイド)、`PVS-Studio.pri`(有料静的解析ツール連携)、`future.tasks`(本家作者の個人メモ)
+- 削除: `overview.key`(41MBのKeynote資料)、`.travis.yml`(未使用のTravis CI設定)、`.github/FUNDING.yml`(本家作者への寄付リンク)、`CONTRIBUTING`(本家への貢献ガイド)、`PVS-Studio.pri`(有料静的解析ツール連携)、`future.tasks`(本家作者の個人メモ)、`docs/`(公開サイトのJekyllソース)
 - `OpenSoundMeter.pro`から上記`PVS-Studio.pri`のinclude・`pvs_studio`ターゲット、および`DISTFILES`中の`future.tasks`/`list.tasks`(実体が存在しなかった)を削除
+
+## 機能の修正・変更時の記録について
+
+アプリの挙動・機能を修正/変更したときは、必ず[dev-docs/customizations.md](dev-docs/customizations.md)に変更内容と理由を追記すること(何を・なぜ変更したかが分かるように)。測定タイプの設定項目など仕様そのものを調査した場合は[dev-docs/measurement-types.md](dev-docs/measurement-types.md)側を更新する。コードのコメントだけに頼らず、`dev-docs/`にまとまった記録を残すことで、本家との差分把握や将来の変更理由の追跡をしやすくする。
