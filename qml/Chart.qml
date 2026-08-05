@@ -156,6 +156,10 @@ Item {
 
         onGestureStarted: function (gestureEvent) {
 
+            if (type === "Magnitude" || type === "Spectrum") {
+                return;
+            }
+
             let directionIndexForPoint = function (point) {
                 let direction = Qt.point(point.x - point.startX, point.startY - point.y);
                 let alpha = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
@@ -267,6 +271,10 @@ Item {
             }
 
             onWheel: function (e) {
+
+                if (type === "Magnitude" || type === "Spectrum") {
+                    return;
+                }
 
                 if (e.modifiers === Qt.NoModifier) {
 

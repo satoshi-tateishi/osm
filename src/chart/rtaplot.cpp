@@ -31,12 +31,15 @@ RTAPlot::RTAPlot(Settings *settings, QQuickItem *parent): FrequencyBasedPlot(set
     qRegisterMetaType<Chart::RTAPlot::Mode>();
     qRegisterMetaType<Chart::RTAPlot::Scale>();
 
-    m_pointsPerOctave = 0;
+    m_pointsPerOctave = 6;
 
     m_y.configure(AxisType::Linear, -140.f, 140.f,  15);
     m_y.setCentralLabel(m_y.min() - 1.f);
     m_y.setUnit("dB");
     updateAxis();
+
+    m_x.setReset(40.f, 20'000.f);
+    m_x.reset();
     setFlag(QQuickItem::ItemHasContents);
 
     connect(this, &RTAPlot::modeChanged, this, &RTAPlot::update);

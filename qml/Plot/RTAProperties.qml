@@ -43,8 +43,9 @@ Item {
                 from: dataObject.xLowLimit
                 to: dataObject.xHighLimit
                 editable: true
-                implicitWidth: 170
-                Layout.fillWidth: true
+                implicitWidth: 90
+                down.indicator.width: 0
+                up.indicator.width: 0
 
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("x from")
@@ -58,14 +59,19 @@ Item {
                 }
             }
 
+            Label {
+                text: " - "
+            }
+
             SelectableSpinBox {
                 value: dataObject.xmax
                 onValueChanged: dataObject.xmax = value
                 from: dataObject.xLowLimit
                 to: dataObject.xHighLimit
                 editable: true
-                implicitWidth: 170
-                Layout.fillWidth: true
+                implicitWidth: 90
+                down.indicator.width: 0
+                up.indicator.width: 0
 
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("x to")
@@ -79,6 +85,10 @@ Item {
                 }
             }
 
+            Item {
+                Layout.preferredWidth: 15
+            }
+
             SelectableSpinBox {
                 id: ymin
                 value: dataObject.ymin
@@ -86,8 +96,7 @@ Item {
                 from: dataObject.yLowLimit
                 to: dataObject.yHighLimit
                 editable: true
-                implicitWidth: 170
-                Layout.fillWidth: true
+                implicitWidth: 150
 
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("y from")
@@ -108,8 +117,7 @@ Item {
                 from: dataObject.yLowLimit
                 to: dataObject.yHighLimit
                 editable: true
-                implicitWidth: 170
-                Layout.fillWidth: true
+                implicitWidth: 150
 
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("y to")
@@ -148,6 +156,7 @@ Item {
                 text: "\ue804"
                 implicitWidth: 60
                 onClicked: fileDialog.open();
+                visible: false
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("save chart as an image")
             }
@@ -175,17 +184,18 @@ Item {
             }
 
             TitledCombo {
-                title: qsTr("ppo")
-                tooltip: qsTr("points per octave")
+                title: qsTr("")
+                tooltip: qsTr("smoothing")
                 visible: mode.model[mode.currentIndex] !== "lines"
-                model: [1, 3, 6, 12, 24, 48, "off"]
+                readonly property var ppoValues: [1, 3, 6, 12, 24, 48, 0]
+                model: ["1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct", "off"]
                 currentIndex: {
-                    model.indexOf(dataObject.pointsPerOctave ? dataObject.pointsPerOctave : "off")
+                    ppoValues.indexOf(dataObject.pointsPerOctave)
                 }
 
                 onCurrentIndexChanged: {
-                    dataObject.pointsPerOctave = model[currentIndex] === "off" ? 0 : model[currentIndex];
-                    if (model[currentIndex] === "off" && dataObject.mode === 1 /*bars*/) {
+                    dataObject.pointsPerOctave = ppoValues[currentIndex];
+                    if (ppoValues[currentIndex] === 0 && dataObject.mode === 1 /*bars*/) {
                         dataObject.mode = 0;
                     }
                 }

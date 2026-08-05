@@ -42,10 +42,14 @@ Item {
                 value: dataObject.xmin
                 tooltiptext: qsTr("x from")
                 onValueChanged: dataObject.xmin = value
-                implicitWidth: 170
-                Layout.fillWidth: true
+                implicitWidth: 90
                 units: dataObject.xLabel
                 decimals: 0
+                indicators: false
+            }
+
+            Label {
+                text: " - "
             }
 
             FloatSpinBox {
@@ -55,10 +59,14 @@ Item {
                 value: dataObject.xmax
                 tooltiptext: qsTr("x to")
                 onValueChanged: dataObject.xmax = value
-                implicitWidth: 170
-                Layout.fillWidth: true
+                implicitWidth: 90
                 units: dataObject.xLabel
+                indicators: false
                 decimals: 0
+            }
+
+            Item {
+                Layout.preferredWidth: 15
             }
 
             FloatSpinBox {
@@ -68,8 +76,7 @@ Item {
                 value: dataObject.ymin
                 tooltiptext: qsTr("y from")
                 onValueChanged: dataObject.ymin = value
-                implicitWidth: 170
-                Layout.fillWidth: true
+                implicitWidth: 150
                 units: dataObject.yLabel
                 step: 1
                 decimals: 0
@@ -82,8 +89,7 @@ Item {
                 value: dataObject.ymax
                 tooltiptext: qsTr("y to")
                 onValueChanged: dataObject.ymax = value
-                implicitWidth: 170
-                Layout.fillWidth: true
+                implicitWidth: 150
                 units: dataObject.yLabel
                 step: 1
                 decimals: 0
@@ -134,6 +140,7 @@ Item {
                 text: "\ue804"
                 implicitWidth: 60
                 onClicked: fileDialog.open();
+                visible: false
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("save chart as an image")
             }
@@ -142,17 +149,16 @@ Item {
             spacing: 0
 
             TitledCombo {
-                title: qsTr("ppo")
-                tooltip: qsTr("points per octave")
+                title: qsTr("")
+                tooltip: qsTr("smoothing")
                 Layout.preferredWidth: 140
-                model: [1, 3, 6, 12, 24, 48]
+                readonly property var ppoValues: [1, 3, 6, 12, 24, 48]
+                model: ["1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct"]
                 currentIndex: {
-                    var ppo = dataObject.pointsPerOctave;
-                    model.indexOf(ppo);
+                    ppoValues.indexOf(dataObject.pointsPerOctave)
                 }
                 onCurrentIndexChanged: {
-                    var ppo = model[currentIndex];
-                    dataObject.pointsPerOctave = ppo;
+                    dataObject.pointsPerOctave = ppoValues[currentIndex];
                 }
             }
 
@@ -173,7 +179,7 @@ Item {
                 value: dataObject.coherenceThreshold
                 tooltiptext: qsTr("coherence threshold")
                 onValueChanged: dataObject.coherenceThreshold = value
-                Layout.preferredWidth: 200
+                Layout.preferredWidth: 150
                 visible: coherence.checked
             }
 

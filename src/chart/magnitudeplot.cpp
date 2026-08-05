@@ -28,6 +28,7 @@ MagnitudePlot::MagnitudePlot(Settings *settings, QQuickItem *parent) :
     setMode(dB);
     m_x.setReset(40.f, 20'000.f);
     m_x.reset();
+    m_pointsPerOctave = 6;
     setFlag(QQuickItem::ItemHasContents);
     m_targetTrace = new TargetTraceItem(m_palette, this);
 }

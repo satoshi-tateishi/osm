@@ -98,10 +98,21 @@ void MagnitudeSeriesRenderer::renderSeries()
             value += std::abs(std::pow(m_source->magnitudeRaw(i), m_invert ? -1 : 1)) * m_sensor - m_sensor;
             break;
 
-        case MagnitudePlot::Mode::dB:
-            value += (m_invert ? -1 : 1) * m_source->magnitude(i);
+        case MagnitudePlot::Mode::dB: {
+            //accumulate power (squared linear magnitude) so band averaging is energy-based,
+            //matching how octave-band SPL meters/RTA integrate energy rather than averaging dB values
+            auto m = std::pow(m_source->magnitudeRaw(i), m_invert ? -1 : 1);
+            value += m * m;
             break;
         }
+        }
+    };
+
+    auto beforeSpline = [this](const float *value, const float *, const unsigned int &count) -> float {
+        if (m_mode == MagnitudePlot::Mode::dB) {
+            return 10.f * log10f(*value / count);
+        }
+        return *value / count;
     };
 
     auto collected = [ &, this] (const float & f1, const float & f2, const float * ac, const float * c) {
@@ -144,7 +155,7 @@ void MagnitudeSeriesRenderer::renderSeries()
         coherence = 0.f;
     };
 
-    iterateForSpline<float, float>(m_pointsPerOctave, &value, &coherence, accumulate, collected);
+    iterateForSpline<float, float>(m_pointsPerOctave, &value, &coherence, accumulate, collected, beforeSpline);
 
     setUniforms();
     if (m_openGL33CoreFunctions) {

@@ -114,6 +114,7 @@ Item {
             text: "\ue804"
             implicitWidth: 60
             onClicked: fileDialog.open();
+            visible: false
             ToolTip.visible: hovered
             ToolTip.text: qsTr("save chart as an image")
         }
