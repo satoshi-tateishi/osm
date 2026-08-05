@@ -45,6 +45,7 @@ Item {
                 implicitWidth: 170
                 Layout.fillWidth: true
                 units: dataObject.xLabel
+                decimals: 0
             }
 
             FloatSpinBox {
@@ -57,6 +58,7 @@ Item {
                 implicitWidth: 170
                 Layout.fillWidth: true
                 units: dataObject.xLabel
+                decimals: 0
             }
 
             FloatSpinBox {
@@ -70,6 +72,7 @@ Item {
                 Layout.fillWidth: true
                 units: dataObject.yLabel
                 step: 1
+                decimals: 0
             }
 
             FloatSpinBox {
@@ -83,6 +86,7 @@ Item {
                 Layout.fillWidth: true
                 units: dataObject.yLabel
                 step: 1
+                decimals: 0
             }
 
             Connections {
@@ -138,22 +142,6 @@ Item {
             spacing: 0
 
             TitledCombo {
-                id: mode
-                tooltip: qsTr("Y axis mode")
-                model: ["dB", "Linear", "Impedance"]
-
-                currentIndex: dataObject.mode
-                onCurrentIndexChanged: {
-                    dataObject.mode = currentIndex;
-                }
-                Layout.preferredWidth: 140
-            }
-
-            Item {
-                Layout.preferredWidth: 5
-            }
-
-            TitledCombo {
                 title: qsTr("ppo")
                 tooltip: qsTr("points per octave")
                 Layout.preferredWidth: 140
@@ -187,18 +175,6 @@ Item {
                 onValueChanged: dataObject.coherenceThreshold = value
                 Layout.preferredWidth: 200
                 visible: coherence.checked
-            }
-
-            FloatSpinBox {
-                min: 0.0
-                max: 1000.0
-                step: 1.0
-                value: dataObject.sensor
-                tooltiptext: qsTr("Senosr resistance")
-                onValueChanged: dataObject.sensor = value
-                Layout.preferredWidth: 200
-                visible: mode.currentText == "Impedance"
-                units: "Ohm"
             }
 
             Item {
