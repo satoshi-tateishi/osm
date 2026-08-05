@@ -1,0 +1,34 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 言語について
+
+このリポジトリで作業する際は、常に日本語で応答してください。コメントやコミットメッセージなど、明示的に別の指示がない限り日本語を使用してください。
+
+## プロジェクト概要
+
+Open Sound Meter (OpenSoundMeter) — Qt 5.15 / C++17製のクロスプラットフォーム音響測定ソフトウェア(`OpenSoundMeter.pro`がビルドのエントリポイント)。対応OS: macOS, Windows, Linux。
+
+## macOSでのビルド方法(このMac: macOS 12.7.4 / Apple Silicon)
+
+このMacはmacOS 12.7.4(Monterey)のため、Homebrewの`qt@5`はbottleが提供されずソースビルドになり、かつフルXcode.appが必須(Command Line Toolsのみでは`qt@5: A full installation of Xcode.app is required`で失敗する)。そのため`aqtinstall`でQt公式のビルド済みバイナリ(x86_64、`clang_64`キット)を取得している。
+
+- Qt本体: `aqtinstall`で`~/Qt/5.15.2/clang_64`に導入済み(`pip install --user aqtinstall`はHomebrewのpython@3.14ではなく`/usr/bin/python3`のpipで実行すること。Homebrewのpython@3.14はmacOS 12を"サポート外"としてensurepip/venvが失敗する)
+- ビルドは**必ずシャドウビルド(`build/`ディレクトリ)で行うこと**。rootでqmakeするとソースツリー内に大量の`.o`/`moc_*.cpp`/`Makefile`等が生成され散らかる(`build/`は`.gitignore`済み):
+  ```
+  mkdir -p build && cd build
+  ~/Qt/5.15.2/clang_64/bin/qmake ../OpenSoundMeter.pro
+  make -j$(sysctl -n hw.ncpu)
+  ```
+- 実行: `open build/OpenSoundMeter.app`
+- **注意: 現状のビルドはx86_64バイナリ**(`lipo -info`で確認可能)。Apple SiliconではRosetta 2経由で動作する。測定用途のDSP処理はRosetta 2でも実用上問題なし。
+- ネイティブarm64バイナリが必要な場合: フルXcode.app(App Store)をインストールした上で`brew install qt@5`(ソースビルド、数時間規模)してから同様にqmake/makeする。Homebrewは実行環境(arm64)向けにネイティブビルドするため、この経路でのみarm64ネイティブになる。
+- `.pro`内の`GRAPH_BACKEND`環境変数で描画バックエンドを切替可能(デフォルト`OPENGL`、`METAL`指定でMetal使用・フルXcode推奨)。
+
+## このフォークでの変更点(本家との差分)
+
+このフォークは開発に不要なファイルを整理済み。本家に追従する際はこの差分を意識すること。
+
+- 削除: `overview.key`(41MBのKeynote資料)、`.travis.yml`(未使用のTravis CI設定)、`.github/FUNDING.yml`(本家作者への寄付リンク)、`CONTRIBUTING`(本家への貢献ガイド)、`PVS-Studio.pri`(有料静的解析ツール連携)、`future.tasks`(本家作者の個人メモ)
+- `OpenSoundMeter.pro`から上記`PVS-Studio.pri`のinclude・`pvs_studio`ターゲット、および`DISTFILES`中の`future.tasks`/`list.tasks`(実体が存在しなかった)を削除

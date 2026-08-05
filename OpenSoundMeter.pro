@@ -570,9 +570,7 @@ ios {
 DISTFILES += \
     OpenSoundMeter.desktop \
     README.md \
-    future.tasks \
     linuxdeployosm.sh \
-    list.tasks \
     shaders/coherence.frag \
     shaders/coherence.geom \
     shaders/coherence.vert \
@@ -596,11 +594,3 @@ DISTFILES += \
 
 ICON = icons/white.icns
 win32:RC_ICONS = icons/white.ico
-
-
-pvs_studio.target = pvs
-pvs_studio.output = true
-pvs_studio.args = --dump-files
-pvs_studio.cxxflags = -std=c++1z
-pvs_studio.sources = $${SOURCES}
-include(PVS-Studio.pri)
