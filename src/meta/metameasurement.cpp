@@ -51,10 +51,10 @@ Measurement::Measurement() : Base(),
     m_polarity(false),
     m_gain(1.f), m_offset(1.f),
     m_dataChanel(0), m_referenceChanel(1), m_delay(0),
-    m_average(1),
-    m_mode(FFT14),
+    m_average(12),
+    m_mode(LFT),
     m_inputFilter(InputFilter::Z),
-    m_averageType(AverageType::LPF),
+    m_averageType(AverageType::FIFO),
     m_filtersFrequency(Filter::Frequency::FourthHz),
     m_windowFunctionType(WindowFunction::Type::Hann)
 {

@@ -63,6 +63,7 @@ class Measurement : public Abstract::Source, public Meta::Measurement
     Q_PROPERTY(QVariant modes READ getAvailableModes CONSTANT)
     Q_PROPERTY(QVariant inputFilters READ getAvailableInputFilters CONSTANT)
     Q_PROPERTY(QVariant windows READ getAvailableWindowTypes CONSTANT)
+    Q_PROPERTY(float averageTickSeconds READ averageTickSeconds CONSTANT)
 
     //local properties
     Q_PROPERTY(QString deviceId READ deviceId WRITE setDeviceId NOTIFY deviceIdChanged REVISION NO_API_REVISION)
@@ -120,6 +121,11 @@ public:
     void setDeviceId(const audio::DeviceInfo::Id &deviceId);
     QString deviceName() const;
     void selectDevice(const QString &name);
+
+    static float averageTickSeconds() noexcept
+    {
+        return TIMER_INTERVAL / 1000.f;
+    }
 
     Q_INVOKABLE void applyAutoGain(const float reference) override;
     Q_INVOKABLE void destroy() override final;

@@ -92,6 +92,10 @@ Measurement::Measurement(QObject *parent) : Abstract::Source(parent), Meta::Meas
     m_deconvAvg.reset();
     m_coherence.setDepth(21);//Filter::BesselLPF<float>::ORDER);
 
+    //setAverage() above ran before averageChanged was connected to updateAverage(),
+    //so the FIFO averaging depth must be synced explicitly here at startup
+    updateAverage();
+
     m_timer.setInterval(TIMER_INTERVAL);
     m_timer.moveToThread(&m_timerThread);
     connect(&m_timer, SIGNAL(timeout()), SLOT(transform()), Qt::DirectConnection);

@@ -50,18 +50,29 @@ Item {
                 onCurrentIndexChanged: dataObjectData.averageType = currentIndex;
             }
 
-            SelectableSpinBox {
+            ColumnLayout {
                 Layout.preferredWidth: elementWidth
-                value: dataObjectData.average
-                from: 1
-                to: 100
-                editable: true
-                onValueChanged: dataObjectData.average = value
-
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("average count")
-
+                spacing: 0
                 visible: dataObjectData.averageType === Measurement.FIFO;
+
+                Label {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: qsTr("≈%1s").arg((dataObjectData.average * dataObjectData.averageTickSeconds).toFixed(1))
+                    font.pixelSize: 9
+                    opacity: 0.7
+                }
+
+                SelectableSpinBox {
+                    Layout.fillWidth: true
+                    value: dataObjectData.average
+                    from: 1
+                    to: 100
+                    editable: true
+                    onValueChanged: dataObjectData.average = value
+
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("average count")
+                }
             }
 
             DropDown {
@@ -82,6 +93,7 @@ Item {
             }
 
             Button {
+                visible: false
                 text: "+/–"
                 checkable: true
                 checked: dataObjectData.polarity
@@ -91,6 +103,10 @@ Item {
 
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("inverse polarity at measurement chanel")
+
+                Component.onCompleted: {
+                    dataObjectData.polarity = false;
+                }
             }
 
             Button {
@@ -267,7 +283,7 @@ Item {
                 }
 
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("estimated delay delta: <b>%L1ms</b>")
+                ToolTip.text: qsTr("推定ディレイとの差分: <b>%L1ms</b>")
                     .arg(Number(1000 * dataObjectData.estimatedDelta / dataObjectData.sampleRate).toLocaleString(locale, 'f', 2));
             }
 
@@ -281,7 +297,7 @@ Item {
 
                 font.capitalization: Font.AllLowercase
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("apply estimated delay")
+                ToolTip.text: qsTr("推定ディレイを適用")
             }
         }
 
@@ -301,12 +317,20 @@ Item {
 
             DropDown {
                 id: windowSelect
+                visible: false
                 model: dataObjectData.windows
                 currentIndex: dataObjectData.window
                 onCurrentIndexChanged: dataObjectData.window = currentIndex
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("window function")
                 Layout.preferredWidth: elementWidth
+
+                Component.onCompleted: {
+                    var hannIndex = model.indexOf("Hann");
+                    if (hannIndex >= 0) {
+                        dataObjectData.window = hannIndex;
+                    }
+                }
             }
 
             DropDown {
