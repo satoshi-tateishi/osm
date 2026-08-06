@@ -2,14 +2,14 @@
 
 [tfc-window-implementation-plan.md](tfc-window-implementation-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-Phase 1のコア計算ロジックまで実装済み。後続Phaseは未着手。
+Phase 2のMeasurement/Meta層まで実装済み。後続Phaseは未着手。
 
 ## 進捗状況
 
 | Phase | 内容 | 状態 |
 |---|---|---|
 | Phase 1 | `FourierTransform`層の拡張(コア計算ロジック) | 完了 |
-| Phase 2 | `Measurement`/`Meta::Measurement`層の配線 | 未着手 |
+| Phase 2 | `Measurement`/`Meta::Measurement`層の配線 | 完了 |
 | Phase 3 | ドキュメント更新(インパルス応答側の非対称性の明文化) | 未着手 |
 | Phase 4 | QML UI実装 | 未着手 |
 | Phase 5 | 結合・負荷検証 | 未着手 |
@@ -50,12 +50,13 @@ Phase 1のコア計算ロジックまで実装済み。後続Phaseは未着手�
 **対象ファイル**: `src/meta/metameasurement.h`、`src/meta/metameasurement.cpp`、`src/source/measurement.h`、`src/source/measurement.cpp`
 
 **タスク**:
-- [ ] `Meta::Measurement::Mode`に`TFC`を追加(`enum Mode {FFT10..FFT16, LFT, TFC};`)
-- [ ] `m_modeMap`に`{Measurement::TFC, "TFC"}`を追加(`m_FFTsizes`には追加しない、`LFT`と同様)
-- [ ] `tfcReferenceTime`/`tfcReferenceFrequency`の`Q_PROPERTY`・シグナル(`tfcReferenceTimeChanged`/`tfcReferenceFrequencyChanged`)追加
-- [ ] `updateFftPower()`に`case Mode::TFC:`追加(`m_dataFT.setTfcEnabled(true)`+reference time/frequency伝搬、`setTimeDomainSize`はFFT12=4096点のまま)。`case Mode::LFT:`側に`m_dataFT.setTfcEnabled(false)`を明示追加(モード往復時のフラグリーク防止)
-- [ ] `toJSON()`/`fromJSON()`に`tfc.referenceTime`/`tfc.referenceFrequency`を追加
-- [ ] `clone()`に対応するプロパティのコピーを追加
+- [x] `Meta::Measurement::Mode`に`TFC`を追加(`enum Mode {FFT10..FFT16, LFT, TFC};`)
+- [x] `m_modeMap`に`{Measurement::TFC, "TFC"}`を追加(`m_FFTsizes`には追加しない、`LFT`と同様)
+- [x] `tfcReferenceTime`/`tfcReferenceFrequency`の`Q_PROPERTY`・シグナル(`tfcReferenceTimeChanged`/`tfcReferenceFrequencyChanged`)追加
+- [x] `updateFftPower()`に`case Mode::TFC:`追加(`m_dataFT.setTfcEnabled(true)`+reference time/frequency伝搬、`setTimeDomainSize`はFFT12=4096点のまま)。`case Mode::LFT:`側に`m_dataFT.setTfcEnabled(false)`を明示追加(モード往復時のフラグリーク防止)
+- [x] TFCモード中のreference time/frequency変更を検出し、モードを切り替えなくても`prepareLog()`を再実行する処理を追加
+- [x] `toJSON()`/`fromJSON()`に`tfc.referenceTime`/`tfc.referenceFrequency`を追加
+- [x] `clone()`に対応するプロパティのコピーを追加
 
 **完了条件・検証方法**:
 - Transform modeをTFCに切り替え、Magnitude/Phase/Coherenceチャートが破綻なく表示されること

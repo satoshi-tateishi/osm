@@ -247,7 +247,9 @@ void StandardLine::setTransformMode(const Meta::Measurement::Mode &newTransformM
 
 QVariant StandardLine::getAvailableTransformModes()
 {
-    return Meta::Measurement::getAvailableModes();
+    auto modes = Meta::Measurement::getAvailableModes().toStringList();
+    modes.removeAll(Meta::Measurement::m_modeMap.at(Meta::Measurement::TFC));
+    return modes;
 }
 
 StandardLine::Mode StandardLine::mode() const

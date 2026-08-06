@@ -174,7 +174,9 @@ TFCモードでもインパルス応答/Stepチャートは、現状通り固定
 
 - `src/meta/metameasurement.h`: `enum Mode {FFT10..FFT16, LFT, TFC};`、`tfcReferenceTime`/`tfcReferenceFrequency`のQ_PROPERTY相当の宣言。
 - `src/meta/metameasurement.cpp`: `m_modeMap`に`{Measurement::TFC, "TFC"}`を追加(`m_FFTsizes`には追加しない、`LFT`と同様)。
-- `src/source/measurement.h/.cpp`: `Q_PROPERTY(float tfcReferenceTime ...)` / `Q_PROPERTY(float tfcReferenceFrequency ...)`、`updateFftPower()`に`case Mode::TFC:`を追加(`m_dataFT.setTfcEnabled(true)`、reference time/frequencyをFourierTransformへ伝搬、`case Mode::LFT:`側では`setTfcEnabled(false)`を明示)。`toJSON()`/`fromJSON()`/`clone()`にも対応するプロパティを追加。
+- `src/source/measurement.h/.cpp`: `Q_PROPERTY(float tfcReferenceTime ...)` / `Q_PROPERTY(float tfcReferenceFrequency ...)`、`updateFftPower()`に`case Mode::TFC:`を追加(`m_dataFT.setTfcEnabled(true)`、reference time/frequencyをFourierTransformへ伝搬、`case Mode::LFT:`側では`setTfcEnabled(false)`を明示)。`toJSON()`/`fromJSON()`/`clone()`にも対応するプロパティを追加。TFCモード中は最後に適用したreference time/frequencyをタイマースレッド側で保持し、いずれかが変わればモードが同じでも`prepareLog()`を再実行する。周波数グリッドとインパルス応答の設定は変わらないため、このパラメータ変更経路では周波数領域配列の再確保や`m_deconvAvg`のリセットを行わない。
+- `Meta::Measurement`の純粋仮想シグナル追加に合わせ、もう一つの派生クラス`remote::MeasurementItem`にもTFCプロパティと対応シグナルを追加し、リモート同期用オブジェクトを引き続き具象クラスとして生成できるようにする。
+- `Meta::Measurement::getAvailableModes()`を共有するFilter・Equalizer・StandardLineはTFC計算に未対応のため、それぞれのモード一覧からTFCだけを除外する。列挙値ではTFCが末尾に追加されているため、既存モードの表示インデックスとの対応は変わらない。
 - `qml/source/MeasurementProperties.qml`: Transform modeドロップダウンに"TFC"を追加、`WindowingProperties.qml`の`wideSpinBox`パターンを踏襲したFloatSpinBoxを2つ(reference time [ms]、reference frequency [Hz])、`visible: dataObjectData.mode === Measurement.TFC`で条件表示する。`windowSelect`(window function選択)は既存通り非表示のまま(このフォークはHann固定、[customizations.md](customizations.md)参照)。
 
 ## 4. 段階的な実装ステップ

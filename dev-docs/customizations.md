@@ -41,6 +41,16 @@
 - 既存の対数周波数グリッドを維持したまま、TFC有効時は`N = round((T_ref / 1000) * f_ref / frequency_normalized)`でビンごとの窓長を決定する。窓長は8サンプル以上、サンプルレートの2秒分以下に制限し、必要に応じて入力リングバッファを動的に拡張する。
 - TFC無効時は従来のLTW1/2/3の窓長、周波数、基底ベクトル確保サイズを維持し、後方互換性を確保している。`Measurement`層やQML UIからTFCを選択する配線はPhase 2以降で行う。
 
+## TFC Window Phase 2（Measurement/Meta層）の実装
+
+`src/meta/metameasurement.h` / `.cpp`、`src/source/measurement.h` / `.cpp`、`src/remote/items/measurementitem.h`
+
+- 測定モード列挙体の末尾に`TFC`を追加し、既存モードの整数値と保存済みJSONの互換性を維持。基準窓時間（既定10ms）と基準周波数（既定1kHz）をatomicなメタプロパティとして追加した。
+- `Measurement::updateFftPower()`でTFCモードを既存Log変換へ接続。TFC→LTW切替時はTFCフラグを明示的に解除する。TFCモード中の基準値変更も80msタイマー上で検出し、モード切替なしで窓テンプレートを再生成する。
+- 基準値だけを変えた場合は周波数グリッドやインパルス応答のサイズが変わらないため、周波数領域配列の再確保とデコンボリューション平均のリセットを省略し、調整操作による無関係なImpulse/Step平均への影響を避けた。
+- TFC基準値をプロジェクトJSONに保存・復元し、Measurementのcloneにもコピーする。`Meta::Measurement`を継承するリモート同期用`MeasurementItem`にも対応プロパティ・シグナルを追加した。QMLの設定UIはPhase 4で追加する。
+- Measurementとモード一覧を共有しているFilter・Equalizer・StandardLineはTFC計算に未対応のため、各一覧からTFCを除外し、選択時にデータが空になる項目が既存UIへ露出しないようにした。
+
 ## Measurementソースの既定値変更(全チャート共通)
 
 `src/meta/metameasurement.cpp`(`Measurement`コンストラクタ)

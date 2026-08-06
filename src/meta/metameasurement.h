@@ -38,7 +38,7 @@ public:
     enum AverageType {Off, LPF, FIFO};
     Q_ENUM(AverageType)
 
-    enum Mode {FFT10, FFT11, FFT12, FFT13, FFT14, FFT15, FFT16, LFT};
+    enum Mode {FFT10, FFT11, FFT12, FFT13, FFT14, FFT15, FFT16, LFT, TFC};
     Q_ENUM(Mode)
     Q_ENUM(Filter::Frequency)
 
@@ -59,6 +59,12 @@ public:
 
     float offset() const;
     void setOffset(float newOffset);
+
+    float tfcReferenceTime() const;
+    void setTfcReferenceTime(float milliseconds);
+
+    float tfcReferenceFrequency() const;
+    void setTfcReferenceFrequency(float hz);
 
     Meta::Measurement::Mode mode() const;
     void setMode(const Mode &mode);
@@ -100,6 +106,8 @@ public:
     virtual void polarityChanged(bool) = 0;
     virtual void gainChanged(float)  = 0;
     virtual void offsetChanged(float) = 0;
+    virtual void tfcReferenceTimeChanged(float) = 0;
+    virtual void tfcReferenceFrequencyChanged(float) = 0;
     virtual void modeChanged(Meta::Measurement::Mode)  = 0;
     virtual void averageChanged(unsigned int)  = 0;
     virtual void dataChanelChanged(unsigned int)  = 0;
@@ -118,6 +126,8 @@ protected:
     std::atomic<bool> m_polarity;
     std::atomic<float> m_gain;
     std::atomic<float> m_offset;
+    std::atomic<float> m_tfcReferenceTime;
+    std::atomic<float> m_tfcReferenceFrequency;
     unsigned int m_dataChanel, m_referenceChanel;
     int m_delay;
     std::atomic<unsigned int> m_average;

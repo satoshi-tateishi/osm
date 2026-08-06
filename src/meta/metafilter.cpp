@@ -98,7 +98,9 @@ void Filter::setMode(const Measurement::Mode &newMode)
 
 QVariant Filter::getAvailableModes()
 {
-    return Measurement::getAvailableModes();
+    auto modes = Measurement::getAvailableModes().toStringList();
+    modes.removeAll(Measurement::m_modeMap.at(Measurement::TFC));
+    return modes;
 }
 
 float Filter::cornerFrequency() const

@@ -30,6 +30,8 @@ class MeasurementItem : public remote::Item, public Meta::Measurement
     Q_PROPERTY(bool polarity READ polarity WRITE setPolarity NOTIFY polarityChanged)
     Q_PROPERTY(float gain READ gain WRITE setGain NOTIFY gainChanged)
     Q_PROPERTY(float offset READ offset WRITE setOffset NOTIFY offsetChanged)
+    Q_PROPERTY(float tfcReferenceTime READ tfcReferenceTime WRITE setTfcReferenceTime NOTIFY tfcReferenceTimeChanged)
+    Q_PROPERTY(float tfcReferenceFrequency READ tfcReferenceFrequency WRITE setTfcReferenceFrequency NOTIFY tfcReferenceFrequencyChanged)
     Q_PROPERTY(int dataChanel READ dataChanel WRITE setDataChanel NOTIFY dataChanelChanged)
     Q_PROPERTY(int referenceChanel READ referenceChanel WRITE setReferenceChanel NOTIFY
                referenceChanelChanged)
@@ -69,6 +71,8 @@ signals:
     void polarityChanged(bool) override;
     void gainChanged(float)  override;
     void offsetChanged(float) override;
+    void tfcReferenceTimeChanged(float) override;
+    void tfcReferenceFrequencyChanged(float) override;
     void modeChanged(Meta::Measurement::Mode)  override;
     void averageChanged(unsigned int)  override;
     void dataChanelChanged(unsigned int)  override;

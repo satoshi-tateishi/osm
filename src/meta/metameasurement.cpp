@@ -27,7 +27,8 @@ const std::map<Measurement::Mode, QString>Measurement::m_modeMap = {
     {Measurement::FFT14, "14"},
     {Measurement::FFT15, "15"},
     {Measurement::FFT16, "16"},
-    {Measurement::LFT,   "LTW"}
+    {Measurement::LFT,   "LTW"},
+    {Measurement::TFC,   "TFC"}
 };
 const std::map<Measurement::InputFilter, QString>Measurement::m_inputFilterMap = {
     {Measurement::InputFilter::Z,     "Z"},
@@ -50,6 +51,7 @@ const std::map<Measurement::Mode, int>Measurement::m_FFTsizes = {
 Measurement::Measurement() : Base(),
     m_polarity(false),
     m_gain(1.f), m_offset(1.f),
+    m_tfcReferenceTime(10.f), m_tfcReferenceFrequency(1000.f),
     m_dataChanel(0), m_referenceChanel(1), m_delay(0),
     m_average(12),
     m_mode(LFT),
@@ -104,6 +106,32 @@ void Measurement::setOffset(float newOffset)
         return;
     m_offset = newOffset;
     emit offsetChanged(m_offset);
+}
+
+float Measurement::tfcReferenceTime() const
+{
+    return m_tfcReferenceTime;
+}
+
+void Measurement::setTfcReferenceTime(float milliseconds)
+{
+    if (!qFuzzyCompare(m_tfcReferenceTime, milliseconds)) {
+        m_tfcReferenceTime = milliseconds;
+        emit tfcReferenceTimeChanged(m_tfcReferenceTime);
+    }
+}
+
+float Measurement::tfcReferenceFrequency() const
+{
+    return m_tfcReferenceFrequency;
+}
+
+void Measurement::setTfcReferenceFrequency(float hz)
+{
+    if (!qFuzzyCompare(m_tfcReferenceFrequency, hz)) {
+        m_tfcReferenceFrequency = hz;
+        emit tfcReferenceFrequencyChanged(m_tfcReferenceFrequency);
+    }
 }
 
 QVariant Measurement::getAvailableModes()

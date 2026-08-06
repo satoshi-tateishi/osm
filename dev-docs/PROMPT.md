@@ -1,265 +1,77 @@
-# 実装プロンプト: TFC Window — Phase 2 (`Measurement`/`Meta::Measurement`層の配線)
+# 実装プロンプト: TFC Window — Phase 3 (ドキュメント更新: インパルス応答側の非対称性の明文化)
 
-このファイルは、[tfc-window-phases.md](tfc-window-phases.md)のPhase 2を実装するための、そのまま実行に使えるプロンプト。新しいセッションでこのプロンプトを渡せば、以降のタスクに着手できるよう、必要な背景情報を全てこのファイル内に含めている。
+このファイルは、[tfc-window-phases.md](tfc-window-phases.md)のPhase 3を実装するための、そのまま実行に使えるプロンプト。新しいセッションでこのプロンプトを渡せば、以降のタスクに着手できるよう、必要な背景情報を全てこのファイル内に含めている。
 
-## 前提: Phase 1は完了・レビュー済み
+## 前提: Phase 1・Phase 2は完了・レビュー済み
 
-`src/math/fouriertransform.h`/`.cpp`に、TFC(Time-Frequency-Constant Window)のコア計算ロジックが実装済み。
+- Phase 1(`src/math/fouriertransform.h`/`.cpp`): `FourierTransform`にTFC(Time-Frequency-Constant Window)の窓長計算ロジックを実装済み。
+- Phase 2(`src/meta/metameasurement.h`/`.cpp`、`src/source/measurement.h`/`.cpp`、`src/remote/items/measurementitem.h`): `Meta::Measurement::Mode`に`TFC`を追加し、`Measurement::updateFftPower()`から`FourierTransform`のTFC機能を呼び出せる状態(C++レベルでは完全に配線済み)。`tfcReferenceTime`/`tfcReferenceFrequency`のQ_PROPERTYもあり、プロジェクトJSONへの保存・復元・`clone()`にも対応済み。
 
-- `FourierTransform`に`setTfcEnabled(bool)`/`setTfcReferenceTime(float ms)`/`setTfcReferenceFrequency(float hz)`のsetter/getterを追加済み(値を保存するだけで、`prepareLog()`の再実行はしない)。
-- `prepareLog()`は、既存の対数周波数グリッド(`frequency_i = offset/referenceN`、`referenceN = startWindow * pow(wFactor, i)`)を**TFC有効・無効に関わらず同じ式で**先に計算し、TFC有効時のみそのfrequencyから窓長`N_i = round(C / frequency_i)`(`C = (T_ref[ms]/1000) * f_ref[Hz]`)を逆算する設計になっている(8サンプル以上・サンプルレート2秒分以下にクランプ)。TFC無効時は`m_logBasis[i].N`・`frequency`・`w`の確保サイズとも変更前と完全に一致することを確認済み(回帰なし)。
-- **`frequency_i`自体はreference time/frequencyの値に依存しない**(TFC有効時でも既存の対数グリッドをそのまま使う)。変わるのは`N_i`(窓長)だけ。この性質はPhase 2の設計に直接影響する(後述)。
+**ただし、QML UI(`qml/source/MeasurementProperties.qml`)のTransform modeドロップダウンにはまだ"TFC"の選択肢が出てこない(Phase 4で追加予定)。** つまり現時点では、TFCは「エンジンとしては完全に動くが、通常の操作ではまだ選択できない」状態。このPhaseで書くドキュメントは、この状態を正確に反映すること(UIから使えるかのように書かない。かといって存在しないかのように省略もしない)。
 
-Phase 1はこのプロンプトの対象外。`fouriertransform.h`/`.cpp`には触れないこと。
+## 今回のタスク: **コード変更は一切行わない**、ドキュメントのみの更新
 
-## 背景
+**対象ファイル**: `dev-docs/measurement-types.md`
 
-Open Sound Meter (OSM) に、AFMG SysTuneの「TFC Window™」相当の機能を実装するプロジェクトの一部。設計の全体像は以下を参照。
+このファイルはOSMの測定タイプ・設定項目をUIの構成に沿って説明するリファレンスドキュメントで、Phase 1着手前に書かれたもの。TFC実装によって生じた実態との差分を埋めるのが目的。
 
-- [tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) — 設計方針・数式導出・リスクの詳細(特に3.6節がPhase 2のUI/配線設計)
-- [tfc-window-phases.md](tfc-window-phases.md) — Phase分割の全体像
+## 現状の記述(該当箇所、確認済み)
 
-**今回のタスクはPhase 2のみ。QML UI(`qml/source/MeasurementProperties.qml`)には一切手を入れないこと**(Phase 4で別途行う)。TFCモードをコード上(C++)で選択・設定・保存・複製できる状態にすることがゴールで、UIからの操作は次Phaseで繋ぐ。
+### 1節の表内、Transform modeの行(34行目)
 
-## 対象ファイル
-
-- `src/meta/metameasurement.h`
-- `src/meta/metameasurement.cpp`
-- `src/source/measurement.h`
-- `src/source/measurement.cpp`
-
-## 現状のコード(変更前、確認済み)
-
-### `src/meta/metameasurement.h`(41行目)
-
-```cpp
-enum Mode {FFT10, FFT11, FFT12, FFT13, FFT14, FFT15, FFT16, LFT};
-Q_ENUM(Mode)
+```
+| Transform mode | `10`〜`16` / `LTW` | FFTサイズを`2^N`サンプルで指定(`10`=1024〜`16`=65536)。値が大きいほど周波数分解能は上がるが時間分解能・応答速度は下がる。`LTW`(`Meta::Measurement::Mode::LFT`)はFFTではなく対数軸の変換(`FourierTransform::Log`、内部的に4096点相当)を使い、低域の分解能を保ちつつ応答を速くする特殊モード |
 ```
 
-`m_modeMap`/`m_FFTsizes`は`static const std::map`として同ファイル113-115行目で宣言。
+「内部的に4096点相当」という表現が、**Magnitude/Phase/Coherence等の周波数領域の計算(実際には`FourierTransform::Log`のビンごと可変長窓、`ppo=24 × octaves=11`=264ビン、最大窓長は65536サンプル起点)と、インパルス応答/Stepチャート(常に固定4096点=`FFT12`のFast FFT)とで、全く別の変換が使われているという非対称性**を正確に反映していない(あたかも両方とも4096点相当であるかのように読める)。これは[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 2.3節・3.5節で調査済みの既存の仕様(TFC実装以前からLTWモードに存在する非対称性)。
 
-### `src/meta/metameasurement.cpp`(22-48行目)
+### 4節、Impulse/Stepの説明(96行目・98行目)
 
-```cpp
-const std::map<Measurement::Mode, QString>Measurement::m_modeMap = {
-    {Measurement::FFT10, "10"},
-    {Measurement::FFT11, "11"},
-    {Measurement::FFT12, "12"},
-    {Measurement::FFT13, "13"},
-    {Measurement::FFT14, "14"},
-    {Measurement::FFT15, "15"},
-    {Measurement::FFT16, "16"},
-    {Measurement::LFT,   "LTW"}
-};
-...
-const std::map<Measurement::Mode, int>Measurement::m_FFTsizes = {
-    {Measurement::FFT10, 10},
-    ...
-    {Measurement::FFT16, 16}
-    // LFTのエントリなし
-};
+```
+- **Impulse**(インパルス応答): 測定/基準の相互相関(デコンボリューション)から求めた時間領域のインパルス応答。X軸はms。Y軸モードは`Linear`/`Log`、`normalize`で振幅を正規化表示。時間軸のウィンドウ処理やディレイ確認、後述のStepの元データになる。
+
+- **Step**(ステップ応答): インパルス応答の積分(累積)。立ち上がり特性やスピーカーの過渡応答・極性確認に使う。`integration zero point`(ms)で積分の基準時刻を指定。
 ```
 
-`getAvailableModes()`(109-116行目)は`m_modeMap`を走査してQML用の文字列リストを作るだけなので、`m_modeMap`に`TFC`を追加すれば自動的にドロップダウンの選択肢(表示は次Phase)に反映される。
-
-`gain`プロパティの実装(81-93行目)がfloatプロパティの標準パターン: `if (!qFuzzyCompare(...)) { m_x = x; emit xChanged(m_x); }`。
-
-### `src/source/measurement.h`(42-88行目、抜粋)
-
-```cpp
-class Measurement : public Abstract::Source, public Meta::Measurement
-{
-    Q_OBJECT
-    Q_PROPERTY(bool polarity READ polarity WRITE setPolarity NOTIFY polarityChanged)
-    Q_PROPERTY(float gain READ gain WRITE setGain NOTIFY gainChanged)
-    ...
-    Q_PROPERTY(Meta::Measurement::Mode mode READ mode WRITE setMode NOTIFY modeChanged)
-    ...
-```
-
-signals節(217-228行目)に各プロパティの`...Changed(...) override;`が並ぶ。
-
-### `src/source/measurement.cpp`の`updateFftPower()`(241-278行目、現状そのまま)
-
-```cpp
-void Measurement::updateFftPower()
-{
-    if (Q_LIKELY(m_mode == m_currentMode)) return;
-    m_currentMode = m_mode;
-
-    switch (m_currentMode) {
-    case Mode::LFT:
-        m_dataFT.setType(FourierTransform::Log);
-        setTimeDomainSize(pow(2, m_FFTsizes.at(FFT12)));
-        break;
-
-    default:
-        m_dataFT.setSize(pow(2, m_FFTsizes.at(m_currentMode)));
-        m_dataFT.setType(FourierTransform::Fast);
-        setTimeDomainSize(pow(2, m_FFTsizes.at(m_currentMode)));
-    }
-    m_dataFT.setSampleRate(sampleRate());
-    m_levelMeters.setSampleRate(sampleRate());
-    m_dataFT.prepare();
-    calculateDataLength();
-
-    m_moduleAvg.setSize(frequencyDomainSize());
-    m_magnitudeAvg.setSize(frequencyDomainSize());
-    m_pahseAvg.setSize(frequencyDomainSize());
-    m_coherence.setSize(frequencyDomainSize());
-
-    m_moduleLPFs.resize(frequencyDomainSize());
-    m_magnitudeLPFs.resize(frequencyDomainSize());
-    m_phaseLPFs.resize(frequencyDomainSize());
-    m_meters.resize(frequencyDomainSize());
-
-    // Deconvolution:
-    m_deconvolution.setSize(timeDomainSize());
-    m_deconvLPFs.resize(timeDomainSize());
-    m_deconvAvg.setSize(timeDomainSize());
-    m_deconvAvg.reset();
-}
-```
-
-`updateFftPower()`は`Measurement::transform()`(519-525行目)から**タイマースレッド上で毎ティック(80ms)呼ばれ**、`m_mode == m_currentMode`なら即returnする(実際の再計算はモードが変わった次のティックでのみ走る、という遅延適用の設計)。`FourierTransform::prepare()`は`m_type`に応じて`prepareFast()`か`prepareLog()`を呼ぶディスパッチャ(`fouriertransform.cpp` 558-566行目)。
-
-`toJSON()`(132-165行目)/`fromJSON()`(166-188行目)/`clone()`(706-733行目)はいずれも単純に「他の各プロパティと同じ書き方でキー・setterを1行追加する」形式。
+現状、LTW/TFCモードでもインパルス応答が別の変換を使っていることには一切触れていない。
 
 ## 実装する変更
 
-### 1. `Mode`列挙体に`TFC`を追加(`metameasurement.h`)
+### 1. Transform modeの行(34行目)を修正
 
-```cpp
-enum Mode {FFT10, FFT11, FFT12, FFT13, FFT14, FFT15, FFT16, LFT, TFC};
-```
+「内部的に4096点相当」という表現をやめ、**Magnitude/Phase/Coherence側とインパルス応答側で使う変換が異なる**ことが一読して分かるように書き換える。あわせて`TFC`モードの説明も同じ行(または表の直後に注記として)追加する。
 
-既存値の並びは変えず末尾に追加すること(保存済みJSONの`mode`は整数値のため、既存値の番号がずれると過去のプロジェクトファイルの互換性が壊れる)。
+含めるべき内容(文面はそのままコピーせず、既存の文体・粒度に合わせて自然に書くこと):
 
-### 2. `m_modeMap`に`TFC`を追加(`metameasurement.cpp`)
+- `LTW`: Magnitude/Phase/Coherence等の周波数領域計算では`FourierTransform::Log`(対数周波数グリッド、ビンごとに異なる窓長)を使う。窓長は`wFactor`/`fFactor`という固定係数で決まる、独自のハイブリッド則(厳密なConstant-QでもTFCでもない)。
+- `TFC`(Time-Frequency-Constant Window): `LTW`と同じ`FourierTransform::Log`の仕組みを使うが、窓長の決定式だけが異なる。基準周波数`f_ref`における基準窓時間`T_ref`を指定すると、任意の周波数`f`の窓長が`T(f) = T_ref * (f_ref/f)`(`T(f)*f`が一定)という物理的に厳密な反比例関係で決まる、AFMG SysTuneの"TFC Window™"相当の機能。**現時点ではUIのTransform modeドロップダウンからは選択できない**(エンジン側の実装は完了しているが、UI配線はPhase 4で追加予定)。
+- どちらのモードも、**インパルス応答/Stepチャートは対象外**であること(次項に誘導)。
 
-```cpp
-{Measurement::TFC, "TFC"}
-```
+### 2. Impulse/Stepの説明(96行目・98行目)に非対称性を明記
 
-`m_FFTsizes`には追加しない(`LFT`と同様、`updateFftPower()`の`default`分岐に流れ込ませないため)。
+Impulseの説明冒頭あたりに、「Transform modeが`LTW`/`TFC`のいずれであっても、インパルス応答/Stepチャートの計算自体は常に固定長(4096点、`FFT12`)のFast FFTを使う(`FourierTransform::Log`の可変長窓の恩恵を受けない)」という趣旨の一文を追加する。
 
-### 3. `tfcReferenceTime`/`tfcReferenceFrequency`のプロパティ追加
+背景説明として、[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.5節の理由(以下要約、必要なら参照する形でもよい)を踏まえるとよい:
 
-`Meta::Measurement`(`metameasurement.h`)に、`gain`/`offset`と同じパターンでgetter/setter宣言・純粋仮想signal・保護メンバを追加:
+1. TFCの主眼はMagnitude/Phase/Coherence表示にあり、インパルス応答は別のFFTサイズで見るのが一般的な使い方
+2. ビンごとに時間分解能が異なる変換結果から単一の時間軸を持つ実数インパルス応答へ逆変換するのは数学的に非自明(既存`Deconvolution`の「複素除算→単一逆FFT」という単純な構造を再利用できない)
+3. 既存のLTW/Logモードで既にこの非対称性を受け入れて運用されている実績がある
 
-```cpp
-// public:
-float tfcReferenceTime() const;
-void setTfcReferenceTime(float milliseconds);
+## 完了条件・検証方法
 
-float tfcReferenceFrequency() const;
-void setTfcReferenceFrequency(float hz);
+[tfc-window-phases.md](tfc-window-phases.md) Phase 3の完了条件: 「記述がPhase 1・Phase 2で実装した実際の挙動と一致していること」。具体的には以下を満たすこと。
 
-// virtual signals:
-virtual void tfcReferenceTimeChanged(float) = 0;
-virtual void tfcReferenceFrequencyChanged(float) = 0;
-
-// protected:
-std::atomic<float> m_tfcReferenceTime;
-std::atomic<float> m_tfcReferenceFrequency;
-```
-
-`metameasurement.cpp`のコンストラクタ初期化リストに既定値を追加(`FourierTransform`側の既定値10.f/1000.fに合わせる)。getter/setterの実装は`gain()`/`setGain()`(81-93行目)と同じ形(`qFuzzyCompare`で変化検知、変化時のみ`emit`)。
-
-`measurement.h`に`Q_PROPERTY`と対応する`...Changed(float) override;`シグナルを追加(既存の`Q_PROPERTY(float gain ...)`と同じ書式)。
-
-### 4. `updateFftPower()`にTFCモードを追加、かつ「モード不変・パラメータ変更のみ」でも再計算が走るようにする
-
-**ここが今回のPhase 2で唯一、既存ドキュメント([tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.6節・[tfc-window-phases.md](tfc-window-phases.md) Phase 2タスク一覧)に明記されていない設計上の注意点**なので、実装前に必ず理解すること。
-
-`updateFftPower()`は`if (Q_LIKELY(m_mode == m_currentMode)) return;`で始まる。つまり**モードそのものが変わらない限り、`updateFftPower()`の本体(=`prepareLog()`の再実行を含む)は一切実行されない**。
-
-TFCモードでは、モードを変えずに`tfcReferenceTime`/`tfcReferenceFrequency`だけをUIのスピンボックスでドラッグ操作するのが主な使い方になる(Phase 4で追加するUI)。しかし`FourierTransform::prepareLog()`は「窓長テンプレート(`m_logBasis[i].w`)と内部リングバッファサイズ(`m_size`)を、その時点の`m_tfcReferenceTime`/`m_tfcReferenceFrequency`の値をもとに一括生成する」処理であり、値を変えただけでは自動的に再生成されない(Phase 1のsetterは値を保存するだけで再計算しない設計だったことを思い出すこと)。つまり**現状のガード条件のままでは、reference time/frequencyスピンボックスを動かしても何も反映されない**。
-
-対応方針: `m_currentMode`と同様に「最後に適用したTFCパラメータ」を保持するメンバ(例: `float m_currentTfcReferenceTime, m_currentTfcReferenceFrequency;`、`m_currentMode`と並べて`measurement.h`private節に追加)を用意し、ガード条件を「モードが変わった、または(TFCモードで)パラメータが変わった」に拡張する:
-
-```cpp
-void Measurement::updateFftPower()
-{
-    bool tfcParamsChanged = (m_mode == Mode::TFC) &&
-        (!qFuzzyCompare(m_currentTfcReferenceTime, tfcReferenceTime()) ||
-         !qFuzzyCompare(m_currentTfcReferenceFrequency, tfcReferenceFrequency()));
-
-    if (Q_LIKELY(m_mode == m_currentMode && !tfcParamsChanged)) return;
-    m_currentMode = m_mode;
-    m_currentTfcReferenceTime = tfcReferenceTime();
-    m_currentTfcReferenceFrequency = tfcReferenceFrequency();
-
-    switch (m_currentMode) {
-    case Mode::LFT:
-        m_dataFT.setTfcEnabled(false);
-        m_dataFT.setType(FourierTransform::Log);
-        setTimeDomainSize(pow(2, m_FFTsizes.at(FFT12)));
-        break;
-
-    case Mode::TFC:
-        m_dataFT.setTfcEnabled(true);
-        m_dataFT.setTfcReferenceTime(m_currentTfcReferenceTime);
-        m_dataFT.setTfcReferenceFrequency(m_currentTfcReferenceFrequency);
-        m_dataFT.setType(FourierTransform::Log);
-        setTimeDomainSize(pow(2, m_FFTsizes.at(FFT12)));
-        break;
-
-    default:
-        m_dataFT.setSize(pow(2, m_FFTsizes.at(m_currentMode)));
-        m_dataFT.setType(FourierTransform::Fast);
-        setTimeDomainSize(pow(2, m_FFTsizes.at(m_currentMode)));
-    }
-    // 以下、既存のm_dataFT.setSampleRate()以降は変更不要
-    ...
-}
-```
-
-> 上記はドラフトであり、そのままコピーせず実装者が精査すること。特に以下を確認・判断すること。
-> - `case Mode::LFT:`に`m_dataFT.setTfcEnabled(false)`を追加している点(モードをTFC→LFTへ切り替えた際のフラグ残留防止、[tfc-window-phases.md](tfc-window-phases.md) Phase 2タスク一覧に明記されている要件)。`default:`分岐(Fast FFT系)は元々`Type::Log`を使わないため`m_tfcEnabled`の値自体に意味がなく、対応不要と考えられるが要確認。
-> - `m_currentTfcReferenceTime`/`m_currentTfcReferenceFrequency`の型(`std::atomic<float>`にすべきか)。`updateFftPower()`はタイマースレッド上で呼ばれる一方、`tfcReferenceTime()`はQMLスレッド(メインスレッド)からのプロパティ書き込みで更新されるため、`m_tfcReferenceTime`自体は`std::atomic<float>`にして単純read/writeの競合を防ぐ想定(上記3.の設計)。`m_currentTfcReferenceTime`はタイマースレッド内でのみ読み書きするローカル状態のため`atomic`である必要はないはずだが、既存の`m_currentMode`(非atomic)の扱いと平仄を合わせて判断すること。
-> - `setTimeDomainSize()`や`calculateDataLength()`など、パラメータ変更時にも本当に必要な処理だけが走るか(不要な`m_deconvAvg.reset()`等でTFCパラメータ調整中に他のチャート(Impulse/Step)の平均がリセットされてしまわないか)を確認する。[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.5節の通りインパルス応答はTFCと無関係(常にFast FFT)なので、本来リセット不要のはずだが、既存コードが`case`分岐に関わらず共通で実行する処理になっている点に注意。
-> - `qFuzzyCompare(0.f, 0.f)`は`false`を返す既知の挙動があるため、初期値の扱い(`m_currentTfcReferenceTime`の初期値をコンストラクタでどう設定するか)を確認すること。
-
-### 5. `toJSON()`/`fromJSON()`への追加
-
-`toJSON()`(132-165行目)に他プロパティと同じ書式で追加:
-```cpp
-data["tfc.referenceTime"]      = tfcReferenceTime();
-data["tfc.referenceFrequency"] = tfcReferenceFrequency();
-```
-`fromJSON()`(166-188行目)に対応するsetter呼び出しを追加(欠損時は現在値をデフォルトにするパターンを踏襲)。
-
-### 6. `clone()`への追加(706-733行目)
-
-```cpp
-cloned->setTfcReferenceTime(tfcReferenceTime());
-cloned->setTfcReferenceFrequency(tfcReferenceFrequency());
-```
-他のプロパティ同様、`cloned->setMode(mode())`の近くに追加。
-
-## 検証方法
-
-QML UIがまだ無い(Phase 4)ため、一時的なテストコードで動作確認する。
-
-1. `Measurement`コンストラクタ末尾などに一時的に`setMode(Measurement::TFC); setTfcReferenceTime(10.f); setTfcReferenceFrequency(1000.f);`を追加するか、あるいは一時的なQML(`Component.onCompleted`でJSプロパティ経由)からモードを`"TFC"`にして動作確認する。
-2. アプリを起動し、Magnitude/Phase/Coherenceチャートが破綻なく表示されること(既存のLFT/Fastモードと比べて明らかに壊れた見た目でないこと)を確認する。
-3. `tfcReferenceTime`を大きく変えて(例: 10ms→30ms)、チャートの見た目(特に低域の分解能・ノイズフロア)が変化すること(=パラメータ変更が実際に反映されていること。上記4.の対応が効いているかの実質的な確認)を確認する。
-4. モードをTFC→LFT→FFT12→TFCのように往復させ、クラッシュ・フリーズがないこと、`m_dataFT.tfcEnabled()`のフラグ残留がないこと(LFTに戻したときTFCの窓長式が使われていないこと)を確認する。
-5. プロジェクトファイルを保存→読み込みし直し、`tfcReferenceTime`/`tfcReferenceFrequency`の値が保持されることを確認する(`toJSON()`/`fromJSON()`の疎通確認)。
-6. 確認が終わったら、一時的に追加したテストコードは必ず削除する。
-7. CLAUDE.mdの動作確認手順(アプリ終了→ビルド→起動→ユーザー確認)に従う。この時点でもUIからのTFCモード選択手段はまだ無い(Phase 4)ため、既存のFast FFT/LTWモードが今まで通り動作することが確認できれば、Phase 2の最終確認としては十分。
+- `measurement-types.md`を読んだだけで、「Magnitude/Phase/Coherence側の分解能はLTW/TFCで変わるが、インパルス応答/Stepは変わらない(常に4096点)」という非対称性が誤解なく伝わること。
+- TFCモードの説明が、現時点でUIから選択できない(Phase 4待ち)ことを含めて実態と食い違っていないこと。
+- コード(`src/`以下)への変更が一切ないこと(`git diff --stat`で`dev-docs/`以外に差分が出ないこと)。
 
 ## やらないこと(スコープ外)
 
-- QML UI(`qml/source/MeasurementProperties.qml`)の変更(Phase 4)
-- `dev-docs/measurement-types.md`の更新(Phase 3)
-- `src/math/fouriertransform.h`/`.cpp`の変更(Phase 1で完了済み、今回は触らない)
-- `src/math/deconvolution.h`/`.cpp`の変更(スコープ外、インパルス応答は現状維持)
+- `src/`以下のコード変更(今回はドキュメントのみ)
+- QML UIの変更(Phase 4)
+- `Measurement`/`FourierTransform`層への追加変更(Phase 1・2で完了済み)
 
 ## 完了後の作業
 
-- [tfc-window-phases.md](tfc-window-phases.md)の進捗状況テーブルで、Phase 2を「完了」に更新する。
-- 実装内容(特に上記4.のドラフトから変更した点)を踏まえて、[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.6節を実態に合わせて更新する。
-- [dev-docs/customizations.md](dev-docs/customizations.md)に変更内容と理由を追記する(CLAUDE.mdの記録ルールに従うこと)。
+- [tfc-window-phases.md](tfc-window-phases.md)の進捗状況テーブルで、Phase 3を「完了」に更新する。
+- [dev-docs/customizations.md](dev-docs/customizations.md)への追記は必須ではない(今回はドキュメントの修正のみで、アプリの挙動変更ではないため)が、記述内容に実装解釈上の補足を加えた場合はそちらにも一言残すと親切。

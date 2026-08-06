@@ -36,6 +36,8 @@ Measurement::Measurement(QObject *parent) : Abstract::Source(parent), Meta::Meas
     m_audioStream(nullptr),
     m_settings(nullptr),//TODO: alean and remove
     m_currentMode(Mode::FFT10),
+    m_currentTfcReferenceTime(tfcReferenceTime()),
+    m_currentTfcReferenceFrequency(tfcReferenceFrequency()),
     m_workingDelay(0), m_delayFinderCounter(0),
     m_estimatedDelay(0),
     m_error(false), m_onReset(false),
@@ -144,6 +146,8 @@ QJsonObject Measurement::toJSON() const noexcept
     data["polarity"]        = polarity();
     data["deviceName"]      = deviceName();
     data["mode"]            = mode();
+    data["tfc.referenceTime"] = tfcReferenceTime();
+    data["tfc.referenceFrequency"] = tfcReferenceFrequency();
     data["inputFilters"]    = static_cast<int>(inputFilter());
 
     QJsonObject calibration;
@@ -179,6 +183,8 @@ void Measurement::fromJSON(QJsonObject data, const SourceList *list) noexcept
     setReferenceChanel(  castUInt(data["referenceChanel" ], referenceChanel()));
 
     setMode(             data["mode"             ].toInt(mode()));
+    setTfcReferenceTime( static_cast<float>(data["tfc.referenceTime"].toDouble(tfcReferenceTime())));
+    setTfcReferenceFrequency(static_cast<float>(data["tfc.referenceFrequency"].toDouble(tfcReferenceFrequency())));
     setAverageType(      data["averageType"      ].toInt(averageType()));
     setFiltersFrequency( data["filtersFrequency" ].toInt(filtersFrequency()));
     setWindowFunctionType(data["window.type"     ].toInt(m_windowFunctionType));
@@ -240,11 +246,27 @@ float Measurement::referencePeak() const
 //should be called while mutex locked
 void Measurement::updateFftPower()
 {
-    if (Q_LIKELY(m_mode == m_currentMode)) return;
+    const bool modeChanged = m_mode != m_currentMode;
+    const bool tfcParamsChanged = m_mode == Mode::TFC
+            && (!qFuzzyCompare(m_currentTfcReferenceTime, tfcReferenceTime())
+                || !qFuzzyCompare(m_currentTfcReferenceFrequency, tfcReferenceFrequency()));
+
+    if (Q_LIKELY(!modeChanged && !tfcParamsChanged)) return;
     m_currentMode = m_mode;
+    m_currentTfcReferenceTime = tfcReferenceTime();
+    m_currentTfcReferenceFrequency = tfcReferenceFrequency();
 
     switch (m_currentMode) {
     case Mode::LFT:
+        m_dataFT.setTfcEnabled(false);
+        m_dataFT.setType(FourierTransform::Log);
+        setTimeDomainSize(pow(2, m_FFTsizes.at(FFT12)));
+        break;
+
+    case Mode::TFC:
+        m_dataFT.setTfcEnabled(true);
+        m_dataFT.setTfcReferenceTime(m_currentTfcReferenceTime);
+        m_dataFT.setTfcReferenceFrequency(m_currentTfcReferenceFrequency);
         m_dataFT.setType(FourierTransform::Log);
         setTimeDomainSize(pow(2, m_FFTsizes.at(FFT12)));
         break;
@@ -258,6 +280,11 @@ void Measurement::updateFftPower()
     m_dataFT.setSampleRate(sampleRate());
     m_levelMeters.setSampleRate(sampleRate());
     m_dataFT.prepare();
+
+    if (!modeChanged) {
+        return;
+    }
+
     calculateDataLength();
 
     m_moduleAvg.setSize(frequencyDomainSize());
@@ -681,6 +708,11 @@ Shared::Source Measurement::store()
     case LFT:
         modeNote = "FT log time window";
         break;
+    case TFC:
+        modeNote = QString("FT TFC window %1ms @ %2Hz")
+                .arg(tfcReferenceTime())
+                .arg(tfcReferenceFrequency());
+        break;
     default:
         modeNote = "FFT power " + modeName();
     }
@@ -709,6 +741,8 @@ Shared::Source Measurement::clone() const
 
     cloned->setActive(false);
     cloned->setMode(mode());
+    cloned->setTfcReferenceTime(tfcReferenceTime());
+    cloned->setTfcReferenceFrequency(tfcReferenceFrequency());
     cloned->setAverageType(averageType());
     cloned->setAverage(average());
     cloned->setFiltersFrequency(filtersFrequency());
