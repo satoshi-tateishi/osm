@@ -36,6 +36,7 @@ Item {
             spacing: 0
 
             FloatSpinBox {
+                visible: false
                 id: xminFloatBox
                 min: dataObject.xLowLimit
                 max: dataObject.xHighLimit
@@ -49,10 +50,12 @@ Item {
             }
 
             Label {
+                visible: false
                 text: " - "
             }
 
             FloatSpinBox {
+                visible: false
                 id: xmaxFloatBox
                 min: dataObject.xLowLimit
                 max: dataObject.xHighLimit

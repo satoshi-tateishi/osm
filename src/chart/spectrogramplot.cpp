@@ -19,15 +19,30 @@
 
 using namespace Chart;
 
+namespace {
+constexpr int DEFAULT_DB_LOWER = -70;
+constexpr int DEFAULT_DB_UPPER = -10;
+constexpr float FIXED_Y_MIN = 0.f;
+constexpr float FIXED_Y_MAX = 4.f;
+}
+
 SpectrogramPlot::SpectrogramPlot(Settings *settings, QQuickItem *parent): FrequencyBasedPlot(settings, parent),
-    m_min(-90), m_mid(-50), m_max(10), m_active(true)
+    m_lower(DEFAULT_DB_LOWER), m_upper(DEFAULT_DB_UPPER), m_active(true)
 {
-    m_y.configure(AxisType::Linear, 0.f,    4.f,  4);
+    m_y.configure(AxisType::Linear, FIXED_Y_MIN, FIXED_Y_MAX,  4);
+    m_x.setGridVisible(false);
     setPointsPerOctave(48);
     setFlag(QQuickItem::ItemHasContents);
     m_y.setCentralLabel(m_y.min() - 1.f);
     m_y.setUnit("s");
     connect(this, SIGNAL(pointsPerOctaveChanged(unsigned int)), this, SLOT(update()));
+}
+
+void SpectrogramPlot::resetAxis()
+{
+    setLower(DEFAULT_DB_LOWER);
+    setUpper(DEFAULT_DB_UPPER);
+    XYPlot::resetAxis();
 }
 
 void SpectrogramPlot::setSettings(Settings *settings) noexcept
@@ -36,12 +51,14 @@ void SpectrogramPlot::setSettings(Settings *settings) noexcept
         FrequencyBasedPlot::setSettings(settings);
     }
 
-    setMin(m_settings->reactValue<SpectrogramPlot, int>("dBMin", this, &SpectrogramPlot::minChanged,
-                                                        m_min).toInt());
-    setMid(m_settings->reactValue<SpectrogramPlot, int>("dBMid", this, &SpectrogramPlot::midChanged,
-                                                        m_mid).toInt());
-    setMax(m_settings->reactValue<SpectrogramPlot, int>("dBMax", this, &SpectrogramPlot::maxChanged,
-                                                        m_max).toInt());
+    // y from/y to (time axis) is fixed and not user-adjustable, regardless of stored settings
+    m_y.setMin(FIXED_Y_MIN);
+    m_y.setMax(FIXED_Y_MAX);
+
+    setLower(m_settings->reactValue<SpectrogramPlot, int>("dBLower", this, &SpectrogramPlot::lowerChanged,
+                                                          m_lower).toInt());
+    setUpper(m_settings->reactValue<SpectrogramPlot, int>("dBUpper", this, &SpectrogramPlot::upperChanged,
+                                                          m_upper).toInt());
 }
 
 void SpectrogramPlot::storeSettings() noexcept
@@ -51,21 +68,20 @@ void SpectrogramPlot::storeSettings() noexcept
 
     FrequencyBasedPlot::storeSettings();
     m_settings->setValue("type", "Spectrogram");
-    m_settings->setValue("dBMin", m_min);
-    m_settings->setValue("dBMid", m_mid);
-    m_settings->setValue("dBMax", m_max);
+    m_settings->setValue("dBLower", m_lower);
+    m_settings->setValue("dBUpper", m_upper);
 }
 
-int SpectrogramPlot::max() const
+int SpectrogramPlot::upper() const
 {
-    return m_max;
+    return m_upper;
 }
 
-void SpectrogramPlot::setMax(int max)
+void SpectrogramPlot::setUpper(int upper)
 {
-    if (m_max != max) {
-        m_max = max;
-        emit maxChanged(m_max);
+    if (m_upper != upper) {
+        m_upper = upper;
+        emit upperChanged(m_upper);
     }
 }
 
@@ -82,28 +98,15 @@ void SpectrogramPlot::setActive(bool active)
     }
 }
 
-int SpectrogramPlot::mid() const
+int SpectrogramPlot::lower() const
 {
-    return m_mid;
+    return m_lower;
 }
 
-void SpectrogramPlot::setMid(int mid)
+void SpectrogramPlot::setLower(int lower)
 {
-    if (m_mid != mid) {
-        m_mid = mid;
-        emit midChanged(m_mid);
-    }
-}
-
-int SpectrogramPlot::min() const
-{
-    return m_min;
-}
-
-void SpectrogramPlot::setMin(int min)
-{
-    if (m_min != min) {
-        m_min = min;
-        emit minChanged(m_min);
+    if (m_lower != lower) {
+        m_lower = lower;
+        emit lowerChanged(m_lower);
     }
 }

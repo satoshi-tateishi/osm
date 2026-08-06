@@ -50,21 +50,51 @@
 
 ## Phase測定のカスタマイズ
 
-`qml/Plot/PhaseProperties.qml`
+`src/chart/phaseplot.cpp`、`qml/Plot/PhaseProperties.qml`
 
 - **"ppo"を"smoothing"に、表示を"1/N oct"形式に変更**: Magnitudeと同様の対応(`TitledCombo`の`title`/`tooltip`を`"ppo"`/`"points per octave"`から空文字/`"smoothing"`に変更し、`model`を`["1/1 oct","1/3 oct",...,"1/48 oct"]`の表示用文字列配列に、実際のppo値は`ppoValues`プロパティで対応付け)。Phase・Magnitudeで見た目(表記・レイアウト幅)を統一するための対応。デフォルト値(`FrequencyBasedPlot`基底クラスの`12`)は変更していない。
+- **`rotate`/`range`/`positivePeriod`(±180º/0..360º表示切替)を固定し、プロパティから非表示化**: `rotate`は`0°`、`range`は`360°`、`positivePeriod`は`false`(=`±180º`表示)に固定。いずれも既存のデフォルト値と一致していたため、`PhasePlot::setSettings()`で保存済み設定からの復元をやめ、`setRotate(0); setRange(360); setPositivePeriod(false);`を常に呼ぶよう変更(X軸固定と同じ考え方)。`qml/Plot/PhaseProperties.qml`側は該当する`SelectableSpinBox`(rotate/range)と`ComboBox`(positivePeriod)を`visible: false`で非表示化。
+- **"use coherence"チェックボックスとしきい値スピンボックスの表示をMagnitudeと統一**: `coherence`の`CheckBox`から`Layout.fillWidth: true`を削除(Magnitudeと同じ既定サイズに)。`coherenceThreshold`の`FloatSpinBox`を`Layout.fillWidth: true`+`opacity: coherence.checked`+`enabled: coherence.checked`(チェック時は薄く表示されたまま場所を占有)から、`Layout.preferredWidth: 150`+`visible: coherence.checked`(チェックを外すと完全に非表示、Magnitudeと同じネガ+のスピンボックス幅・表示方式)に変更。
 
 ## Spectrum(RTA)測定のカスタマイズ
 
 `src/chart/rtaplot.cpp`、`qml/Plot/RTAProperties.qml`
 
-- **デフォルトのX軸範囲**: `20Hz〜20,000Hz` → 一時期`40Hz〜20,000Hz`にしていたが、`20Hz〜20,000Hz`に戻した(`RTAPlot`コンストラクタの`m_x.setReset(20.f, 20'000.f)`。Magnitude/Phaseと表示を揃えるため)。Y軸範囲・小数点表示は変更なし。
+- **デフォルトのX軸範囲**: `20Hz〜20,000Hz` → 一時期`40Hz〜20,000Hz`にしていたが、`20Hz〜20,000Hz`に戻した(`RTAPlot`コンストラクタの`m_x.setReset(20.f, 20'000.f)`。Magnitude/Phaseと表示を揃えるため)。
+- **デフォルトのY軸範囲(dBfsスケール)を変更**: `y from`を`-140dB`→`-100dB`→最終的に`-70dB`に変更(`RTAPlot::updateAxis()`のDBfsケースで`m_y.setMin(-70.f); m_y.setReset(-70.f, 0.f);`。`y to`は`0dB`のまま変更なし)。SPL/phonスケールの範囲は変更なし。
+- **Y軸に5dB刻みの補助グリッドを追加**: `Chart::Axis`(`src/chart/axis.h`/`.cpp`)に`minorGridStep`(デフォルト`0`=無効)を追加。`paint()`内でメインのラベル付きグリッド線を描画する前に、`minorGridStep`刻みの補助線を`m_palette.lineColor()`のアルファ値を半分にした薄い色で描画する(メイン線と同じ位置に重なった場合は後から描画されるメイン線が上書きするため常に濃い色を維持)。`RTAPlot::updateAxis()`の末尾で`m_y.setMinorGridStep(5.f)`を呼び、DBfs/SPL/Phonいずれのスケールでも5dB(ph)刻みの補助グリッドを表示するようにした。他のチャート(`Axis`を使う全種別)には影響しない(デフォルト無効のため)。
+- **バグ修正: Y軸のダブルクリックresetが初期表示と異なる値に戻っていた**: `Axis::configure()`は引数(この場合`-140〜40`)をそのまま`m_reset`に設定するが、`updateAxis()`はその直後に`setMin()`/`setMax()`で表示上の初期値(`-100〜0`)に上書きしていたため、`m_reset`だけが古い`-140〜40`のまま取り残されていた(`configure()`の`min`/`max`引数は「選択可能な範囲の上下限」を兼ねているため、表示初期値と一致させられない)。ダブルクリックでリセットすると意図しない`-140dB〜40dB`に戻ってしまう不具合があったため、`m_y.setReset(-100.f, 0.f);`を明示的に呼んで解消。SPL/Phonスケール(`60〜100`)にも同種の潜在バグがあったため、あわせて`m_y.setReset(60.f, 100.f);`を追加。
 - **`x from`/`x to`のナッジ(上下の増減ボタン)を非表示化**: `SelectableSpinBox`(標準の`SpinBox`)に`down.indicator.width: 0`/`up.indicator.width: 0`を指定(`FloatSpinBox`の`indicators`相当をSpinBox側で直接指定)。
 - **`x from`/`x to`の見た目調整**: 間に`" - "`区切りの`Label`を追加し、`implicitWidth`を`170`→`90`に縮小(`Layout.fillWidth: true`も削除)。Magnitudeと同様の対応。
 - **`y from`/`y to`の幅調整**: ナッジ(+/-)は残したまま`implicitWidth`を`170`→`150`に調整(`Layout.fillWidth: true`は削除)。x軸グループとy軸グループの間に`Layout.preferredWidth: 15`の`Item`(スペーサー)を挿入。
 - **"ppo"を"smoothing"に、表示を"1/N oct"形式に変更**: Magnitudeと同様の対応(`"off"`の選択肢のみ`ppoValues`に`0`として維持)。
 - **smoothingのデフォルトを"1/6 oct"に変更**: `RTAPlot`コンストラクタで`m_pointsPerOctave = 0;`(off)だったのを`= 6;`に変更。
 - (参考・変更なし) Spectrumの帯域平均は元々パワー(エネルギー)平均で実装済み(`RTASeriesRenderer::renderPPOLine()`/`renderBars()`で`module(i)^2`を積算してから`10*log10()`)だったため、Magnitudeのような修正は不要だった。
+
+## Spectrogram測定のカスタマイズ
+
+`src/chart/spectrogramplot.h`/`.cpp`、`src/chart/opengl/spectrogramseriesrenderer.h`/`.cpp`、`src/chart/metal/spectrogramseriesnode.h`/`.mm`、`qml/Plot/SpectrogramProperties.qml`、`qml/Plot/SpectrogramThresholds.qml`(新規)、`qml/Chart.qml`
+
+- **デフォルトの`min dB`/`mid dB`/`max dB`を変更(過去の変更、その後下記でlower/upperに統合)**: `-90dB`/`-50dB`/`10dB` → `-100dB`/`-50dB`/`0dB`。
+- **`min`/`mid`/`max`の3値方式を廃止し、`lower`(下限しきい値)/`upper`(上限しきい値)の2値+4色グラデーション方式に変更**: 劇場のスピーカーチューニング用途では、音が小さい部分に色が付いていると見づらいという要望に対応。
+  - 色分けロジック(`SpectrogramSeriesRenderer::renderSeries()`、`SpectrogramSeriesNode::updateHistory()`の2箇所、元々重複実装)を変更: `lower`未満は**フェードなしで完全に透明**(旧実装は`floor(-140dB)`から`lower`にかけて青がフェードインしていたが、これを廃止)。`lower`〜`upper`の間を3等分し、青→緑→黄→赤の4色グラデーション。`upper`以上は赤で固定。黄色は`#FFEB3B`(Material Yellow 500、既存の青`#2196F3`/緑`#8BC34A`/赤`#F44336`と統一感のある選定)。
+  - `SpectrogramPlot`のQ_PROPERTY・保存キーを`min`/`mid`/`max`(`dBMin`/`dBMid`/`dBMax`)から`lower`/`upper`(`dBLower`/`dBUpper`)に変更(後方互換は取らない、個人利用アプリのため許容)。デフォルト値は`lower=-70`, `upper=-10`(`DEFAULT_DB_LOWER`/`DEFAULT_DB_UPPER`)。
+  - **バグ修正: チャート左側のドラッグスライダーの可動範囲が逆になっていた**: 画面Y座標は下に行くほど小さいdB値(quiet)に対応する(`valueToY()`は値の増加関数ではなく減少関数)。下限ハンドルの`drag.minimumY`/`drag.maximumY`にそれぞれ`valueToY(dbMax)`(本来は上限側の制約)と`valueToY(upper-minGap)`(本来は下限側の制約)を取り違えて割り当てており、上限ハンドルも同様に逆だったため、可動範囲がバーの上端付近の数ピクセルに押し込められ「少し動かしただけで上限の3dB下まで飛んで、それ以上下に動かせない」という不具合が発生していた。`drag.minimumY`=画面上で最も小さいYへの制約(dB上限側)、`drag.maximumY`=最も大きいYへの制約(dB下限側)となるよう対応関係を修正。
+  - **チャート左側にドラッグ可能な▲(下限)/▼(上限)しきい値マーカーを新設**(`qml/Plot/SpectrogramThresholds.qml`)。Magnitude+Equalizerで使われている既存の`qml/EQPoints.qml`と同じ「QMLの`MouseArea`+`drag.target`で`Chart.qml`の`helper` Loaderにオーバーレイを重ねる」パターンを踏襲。表示dB範囲は`-140dB`〜`0dB`固定(レンダラー内の`floor`定数と一致)で、この範囲内をドラッグして`lower`/`upper`を直感的に調整できる。あわせて凡例のグラデーションバー(現在の色分けロジックをそのまま反映した縦長バー)も表示。プロパティパネル(`qml/Plot/SpectrogramProperties.qml`)側にも従来通り数値入力欄(`lower`/`upper`のスピンボックス)を残し、両方から調整可能にした。
+  - `SpectrogramPlot::resetAxis()`(ダブルクリックでのリセット)も`lower`/`upper`のデフォルト値に戻すよう更新。
+  - **バグ修正: 凡例バーで`lower`未満にも色が漏れて表示されていた**: QMLの`Gradient`は、同一`position`に2つの`GradientStop`(色が変わる境界=ハードエッジ)を置いても、どちらの色を採用するかの順序が保証されない(実装依存)。`lower`未満を透明にする境界に`posLower`を2回(青→透明)使っていたため、透明側が正しく採用されずに色が漏れていた。2つ目のストップ位置を`posLower + epsilon`(`epsilon = 1/バー高さ`、約1px相当)へごく僅かにずらし、確実にハードエッジとして機能するよう修正。
+  - **▲▼ハンドルにホバー中のしきい値表示を追加**: `MouseArea`に`hoverEnabled: true`と`ToolTip.visible: containsMouse || drag.active`/`ToolTip.text`を追加し、カーソルを乗せている間・ドラッグ中に現在のdB値をツールチップ表示するようにした。表示は`Math.floor()`で小数点以下切り捨ての整数表示(`lower`/`upper`自体は元々int型のため実質的な丸め処理は発生しないが、表示形式の明示化として指定)。
+  - **しきい値の設定範囲を`-140dB〜0dB`から`-80dB〜0dB`に変更**: `qml/Plot/SpectrogramThresholds.qml`の`dbMin`(凡例バー・ドラッグハンドルの表示範囲)、および`qml/Plot/SpectrogramProperties.qml`のスピンボックス範囲(`lower`の`from`を`-140`→`-80`、`upper`の`to`を`20`→`0`)を統一。レンダラー内の実測値クランプ用`floor`定数(`-140dB`、極端に静かなFFTビンの下限)は変更していない(UI上の設定可能範囲とは独立)。
+- **X軸(周波数軸)のグリッド線を非表示化**: 色のグラデーション(パワースペクトルの濃淡)にグリッド線が重なって濃度を誤認しやすいための対応。`Chart::Axis`(`src/chart/axis.h`/`.cpp`)に`gridVisible`(デフォルト`true`)を追加し、`paint()`内のグリッド線描画(`painter->drawLine(p1, p2)`)のみをガード(周波数ラベルのテキスト描画は影響を受けず引き続き表示される)。X軸・Y軸は独立した`Axis`インスタンスのため、`SpectrogramPlot`のコンストラクタでのみ`m_x.setGridVisible(false)`を呼び、他の`FrequencyBasedPlot`派生クラス(RTA/Magnitude/Coherence等、X軸設定は共通の`configureXAxis()`を使用)には影響しない。
+- **Y軸(時間軸)の`y from`/`y to`を`0s`/`4s`に固定し、プロパティパネルから非表示化**: `SpectrogramPlot::setSettings()`で、`XYPlot`由来の汎用的なymin/ymax永続化(`"ymin"`/`"ymax"`設定キー)を読み込んだ**直後に**`m_y.setMin(FIXED_Y_MIN)`/`setMax(FIXED_Y_MAX)`(`0.f`/`4.f`)で強制上書きするようにした。理由: 過去の操作で`y to`が誤って`0s`に変更・保存され、表示範囲がゼロになって波形が全く見えなくなる不具合が実際に発生したため(時間軸はSpectrogram表示上意味のある調整対象ではなく、常に直近4秒を表示する仕様に固定する方が安全と判断)。`qml/Plot/SpectrogramProperties.qml`の`y from`/`y to`スピンボックスは`visible: false`で非表示化(既存の"save chart as an image"ボタン等と同じパターン、機能自体は削除せず残置)。
+  - 経緯: 当初`min`/`mid`/`max`のデフォルト値変更のみ行ったが、その検証中に「音が小さい時は無色にしたい」という要望が出たため、本節の設計に発展・置き換えた。
+
+## X軸(周波数)を20Hz〜20,000Hzに固定・プロパティから非表示化(周波数軸を持つ全測定タイプ共通)
+
+`src/chart/frequencybasedplot.cpp`、`src/chart/coherenceplot.cpp`、`src/chart/crestfactorplot.cpp`、`qml/Plot/RTAProperties.qml`/`MagnitudeProperties.qml`/`PhaseProperties.qml`/`CoherenceProperties.qml`/`SpectrogramProperties.qml`/`GroupDelayProperties.qml`/`PhaseDelayProperties.qml`/`CrestFactorProperties.qml`
+
+- **`x from`/`x to`を`20Hz`/`20,000Hz`に固定し、ユーザーが変更できないようにした**: 周波数レンジは毎回この範囲を見れば十分なため。`FrequencyBasedPlot::setSettings()`で、保存済み設定から`xmin`/`xmax`を復元した直後に`m_x.setMin(20.f)`/`setMax(20'000.f)`で強制上書き(Spectrogramの`y from`/`y to`固定と同じ考え方)。これでRTA/Magnitude/Phase/GroupDelay/PhaseDelay/Spectrogramはカバーされるが、`CoherencePlot`/`CrestFactorPlot`は独自の`setSettings()`(基底クラスを呼ばない実装)を持つため、それぞれに同じ2行を個別追加。**Nyquist**は対象外(X軸が周波数(Hz)ではなく複素平面の実部のため)。
+- 各測定タイプのプロパティパネルから`x from`/`x to`のスピンボックス(および間の`" - "`区切りラベルがある場合はそれも)を`visible: false`で非表示化。機能自体は削除せず残置。
 
 ## Global smoothing機能の追加・smoothing表示の全測定タイプ統一
 
@@ -79,14 +109,14 @@
   - `NyquistPlot::setSettings`/`storeSettings`が`XYPlot::setSettings`/`storeSettings`を直接呼んでおり、`FrequencyBasedPlot`が持つ`ppo`/`coherence`/`coherenceThreshold`/`useGlobalPPO`が設定ファイルに保存・復元されていなかった(実行中は常にコンストラクタの既定値)。`FrequencyBasedPlot::setSettings`/`storeSettings`を呼ぶよう修正し、これらの値も他の測定タイプと同様に永続化されるようにした。
 - **挙動変更の注意**: 上記の統一に伴い、Magnitude/Spectrum(1/6 oct)以外の測定タイプ(従来12、Spectrogramのみ48)も含め、初回起動時は全て"Global"(初期値1/6 oct)に従う見た目になる。個別のデフォルト値を保ちたい場合は、各測定のプロパティパネルでGlobal以外の値を手動選択する必要がある。
 
-## チャート上のジェスチャー操作の無効化(Magnitude / Spectrum / Phase)
+## チャート上のジェスチャー操作の無効化(全測定タイプ共通)
 
 `qml/Chart.qml`
 
-- Magnitude・Spectrum・Phaseのチャート表示エリア上での、トラックパッドのピンチイン/アウト(2本指ズーム)・2本指ドラッグ(パン)・マウスホイール/2本指スクロールによるズームを無効化した。`type === "Magnitude" || type === "Spectrum" || type === "Phase"`のときは`touchArea.onGestureStarted`と`opener.onWheel`の先頭で処理を`return`するようにしている。
-- 目的: 軸範囲(x from/x to/y from/y to)の変更を、誤操作を避けるためプロパティパネルからの入力のみに限定するため。Phaseは当初対象外だったが、Magnitude/Spectrumと同様の理由で追加。
+- 全チャート表示エリア上での、トラックパッドのピンチイン/アウト(2本指ズーム)・2本指ドラッグ(パン)・マウスホイール/2本指スクロールによるズームを無効化した。当初はMagnitude/Spectrum/Phaseの3タイプのみ`type === "..."`の条件判定で対象を絞っていたが、最終的に全測定タイプに拡大したため、`touchArea.onGestureStarted`と`opener.onWheel`の先頭を条件無しの`return;`にした(型判定の条件式は削除)。
+- 目的: 軸範囲(x from/x to/y from/y to)の変更を、誤操作を避けるためプロパティパネルからの入力のみに限定するため。
 - ダブルクリックでの軸リセット(`chart.plot.resetAxis()`)と、右クリックでの計算機ポップアップ(`openCalculator`)は影響を受けず、従来通り動作する。
-- 他の測定タイプ(Coherence, Group Delayなど)ではジェスチャー操作は無効化しておらず、従来通り。
+- `return;`より後ろのジェスチャー処理ロジック自体は削除せず残置(将来的に一部タイプだけ再度有効化したくなった場合に備えるため)。
 
 ## "save chart as an image"ボタンの非表示化(全測定タイプ共通)
 
@@ -152,5 +182,14 @@
 `qml/GeneratorProperties.qml`
 
 - "inverse polarity at even channels"ツールチップの`Button`(id無し、text: "even inv")を`visible: false`で非表示化し、`Component.onCompleted`で`control.currentGenerator.evenPolarity = false`を強制設定して正相に固定。既定値自体が`false`(`GeneratorThread`コンストラクタ)なので実質的な動作変更はなく、UIから触れなくするための対応。
+
+## 測定タイプ選択肢の絞り込み(劇場スピーカーチューニング用途に不要なものを非表示化)
+
+`qml/Chart.qml`、`qml/menu/Top.qml`、`qml/menu/Side.qml`
+
+- チャート右上の測定タイプ選択`DropDown`(`qml/Chart.qml`)から、"Step"・"Group Delay"・"Phase Delay"・"Level"・"Numeric"・"Crest Factor"・"Nyquist"の7種類を削除し、選択肢を`["Spectrum", "Magnitude", "Phase", "Impulse", "Coherence", "Spectrogram"]`のみにした。理由: 劇場のスピーカーチューニング用途ではこれらの測定タイプは不要なため。
+  - "Phase Delay"・"Crest Factor"・"Nyquist"はもともと`applicationAppearance.experimentFunctions`フラグがONの時だけ選択肢に出る実装だったため、実質的にデフォルトでは既に非表示だった。今回はこのフラグをONにしても出てこないよう、選択肢自体から完全に削除した。
+  - 各測定タイプの実装(`src/chart/*.h`/`.cpp`、`qml/Plot/*.qml`)自体は削除していない。既に保存済みのプロジェクトファイル(過去にこれらの型で保存したもの)を開いた場合は、`VariableChart::initType()`が引き続き型名から復元するため問題なく表示される(選択肢から選べなくなるだけ)。
+- 上記に伴い不要になった"Experiment functions"のON/OFF切り替えUIも非表示化: macOSメニューバー(`qml/menu/Top.qml`の"View"メニュー内`MenuItem`)は`visible: false`/`enabled: false`、ハンバーガーメニュー(`qml/menu/Side.qml`)は該当`ListElement`を削除(`ListModel`は項目単位の`visible`切り替えができないため。区切り線は直前の"Show target"項目に付け替えて維持)。`Appearance::experimentFunctions`プロパティ自体は削除していない(将来的に他の実験的機能で再利用される可能性があるため残置)。
 
 測定タイプごとの設定項目の詳細は[measurement-types.md](measurement-types.md)を参照。

@@ -46,7 +46,7 @@ protected:
     std::deque<historyRow> history;
 
 private:
-    int m_min, m_mid, m_max;
+    int m_lower, m_upper;
     unsigned int m_pointsPerOctave;
     QElapsedTimer m_timer;
 

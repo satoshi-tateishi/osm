@@ -141,17 +141,11 @@ void PhasePlot::setSettings(Settings *settings) noexcept
 {
     if (settings && (settings->value("type") == "Phase")) {
         FrequencyBasedPlot::setSettings(settings);
-        setRotate(
-            m_settings->reactValue<PhasePlot, int>("rotate", this, &PhasePlot::rotateChanged,
-                                                   m_center).toInt());
-        setRange(
-            m_settings->reactValue<PhasePlot, int>("range", this, &PhasePlot::rangeChanged, m_range).toInt());
 
-        setPositivePeriod(m_settings->reactValue<PhasePlot, bool>(
-                              "positivePeriod",
-                              this,
-                              &PhasePlot::positivePeriodChanged,
-                              m_positivePeriod).toBool());
+        // rotate/range/positivePeriod are fixed and not user-adjustable, regardless of stored settings
+        setRotate(0);
+        setRange(360);
+        setPositivePeriod(false);
     }
 }
 void PhasePlot::storeSettings() noexcept

@@ -81,6 +81,10 @@ Item {
                         helper.active=true;
                     }
                 break;
+                case "Spectrogram":
+                    helper.setSource("qrc:/Plot/SpectrogramThresholds.qml", {plot: chart.plot});
+                    helper.active = true;
+                break;
             }
         }
 
@@ -156,9 +160,7 @@ Item {
 
         onGestureStarted: function (gestureEvent) {
 
-            if (type === "Magnitude" || type === "Spectrum" || type === "Phase") {
-                return;
-            }
+            return;
 
             let directionIndexForPoint = function (point) {
                 let direction = Qt.point(point.x - point.startX, point.startY - point.y);
@@ -272,9 +274,7 @@ Item {
 
             onWheel: function (e) {
 
-                if (type === "Magnitude" || type === "Spectrum" || type === "Phase") {
-                    return;
-                }
+                return;
 
                 if (e.modifiers === Qt.NoModifier) {
 
@@ -398,9 +398,7 @@ Item {
         implicitWidth: 145
         implicitHeight: Material.buttonHeight
         background: null
-        model: applicationAppearance.experimentFunctions ?
-                   ["Spectrum", "Magnitude", "Phase", "Impulse", "Step", "Coherence", "Group Delay", "Phase Delay", "Spectrogram", "Level", "Numeric", "Crest Factor", "Nyquist"] :
-                   ["Spectrum", "Magnitude", "Phase", "Impulse", "Step", "Coherence", "Group Delay", "Spectrogram", "Level", "Numeric"]
+        model: ["Spectrum", "Magnitude", "Phase", "Impulse", "Coherence", "Spectrogram"]
         currentIndex: model.indexOf(type)
         onCurrentIndexChanged: {
             var pb = applicationWindow.properiesbar;

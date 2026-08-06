@@ -36,6 +36,7 @@ Item {
         spacing: 0
 
         SelectableSpinBox {
+            visible: false
             value: dataObject.xmin
             onValueChanged: dataObject.xmin = value
             from: dataObject.xLowLimit
@@ -57,6 +58,7 @@ Item {
         }
 
         SelectableSpinBox {
+            visible: false
             value: dataObject.xmax
             onValueChanged: dataObject.xmax = value
             from: dataObject.xLowLimit

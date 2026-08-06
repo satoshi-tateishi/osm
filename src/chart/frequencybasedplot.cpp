@@ -18,6 +18,11 @@
 #include "frequencybasedplot.h"
 using namespace Chart;
 
+namespace {
+constexpr float FIXED_X_MIN = 20.f;
+constexpr float FIXED_X_MAX = 20'000.f;
+}
+
 FrequencyBasedPlot::FrequencyBasedPlot(Settings *settings, QQuickItem *parent): XYPlot(settings,
                                                                                            parent),
     m_pointsPerOctave(12), m_useGlobalPPO(true), m_coherenceThreshold(0.7f), m_coherence(true)
@@ -107,6 +112,11 @@ float FrequencyBasedPlot::coherenceThreshold() const noexcept
 void FrequencyBasedPlot::setSettings(Settings *settings) noexcept
 {
     XYPlot::setSettings(settings);
+
+    // x from/x to (frequency axis) is fixed and not user-adjustable, regardless of stored settings
+    m_x.setMin(FIXED_X_MIN);
+    m_x.setMax(FIXED_X_MAX);
+
     setCoherence(
         m_settings->reactValue<FrequencyBasedPlot, bool>("coherence", this,
                                                          &FrequencyBasedPlot::coherenceChanged, m_coherence).toBool());

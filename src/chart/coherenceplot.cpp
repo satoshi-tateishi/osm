@@ -116,6 +116,10 @@ void CoherencePlot::setSettings(Settings *settings) noexcept
     if (settings && (settings->value("type") == "Coherence")) {
         XYPlot::setSettings(settings);
 
+        // x from/x to (frequency axis) is fixed and not user-adjustable, regardless of stored settings
+        m_x.setMin(20.f);
+        m_x.setMax(20'000.f);
+
         setType(
             m_settings->reactValue<CoherencePlot, CoherencePlot::Type>("ctype", this, &CoherencePlot::typeChanged, m_type));
         setUseGlobalPPO(

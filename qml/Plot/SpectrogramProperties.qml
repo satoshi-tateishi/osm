@@ -37,6 +37,7 @@ Item {
         spacing: 0
 
         SelectableSpinBox {
+            visible: false
             value: dataObject.xmin
             onValueChanged: dataObject.xmin = value
             from: dataObject.xLowLimit
@@ -58,6 +59,7 @@ Item {
         }
 
         SelectableSpinBox {
+            visible: false
             value: dataObject.xmax
             onValueChanged: dataObject.xmax = value
             from: dataObject.xLowLimit
@@ -79,6 +81,7 @@ Item {
         }
 
         SelectableSpinBox {
+            visible: false
             value: dataObject.ymin
             onValueChanged: dataObject.ymin = value
             from: dataObject.yLowLimit
@@ -100,6 +103,7 @@ Item {
         }
 
         SelectableSpinBox {
+            visible: false
             value: dataObject.ymax
             onValueChanged: dataObject.ymax = value
             from: dataObject.yLowLimit
@@ -169,15 +173,15 @@ Item {
         }
 
         SelectableSpinBox {
-            value: dataObject.min
-            onValueChanged: dataObject.min = value
-            from: -140
-            to: dataObject.mid - 1
+            value: dataObject.lower
+            onValueChanged: dataObject.lower = value
+            from: -80
+            to: dataObject.upper - 1
             editable: true
             Layout.fillWidth: true
 
             ToolTip.visible: hovered
-            ToolTip.text: qsTr("min dB point")
+            ToolTip.text: qsTr("lower threshold (below: no color)")
 
             textFromValue: function(value, locale) {
                 return Number(value) + "dB"
@@ -194,41 +198,15 @@ Item {
         }
 
         SelectableSpinBox {
-            value: dataObject.mid
-            onValueChanged: dataObject.mid = value
-            from: dataObject.min
-            to: dataObject.max
+            value: dataObject.upper
+            onValueChanged: dataObject.upper = value
+            from: dataObject.lower + 1
+            to: 0
             editable: true
             Layout.fillWidth: true
 
             ToolTip.visible: hovered
-            ToolTip.text: qsTr("mid dB point")
-
-            textFromValue: function(value, locale) {
-                return Number(value) + "dB"
-            }
-
-            valueFromText: function(text, locale) {
-                return parseInt(text)
-            }
-
-            Rectangle {
-                color: "#8BC34A"
-                anchors.fill: parent
-                opacity: 0.15
-            }
-        }
-
-        SelectableSpinBox {
-            value: dataObject.max
-            onValueChanged: dataObject.max = value
-            from: dataObject.mid + 1
-            to: 20
-            editable: true
-            Layout.fillWidth: true
-
-            ToolTip.visible: hovered
-            ToolTip.text: qsTr("max dB point")
+            ToolTip.text: qsTr("upper threshold (above: solid red)")
 
             textFromValue: function(value, locale) {
                 return Number(value) + "dB"

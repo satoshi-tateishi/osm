@@ -56,7 +56,8 @@ void RTAPlot::updateAxis()
         m_y.configure(AxisType::Linear, -140.f, 40.f,  29);
         m_y.setCentralLabel(m_y.min() - 1.f);
         m_y.setMax(0.f);
-        m_y.setMin(-140.f);
+        m_y.setMin(-70.f);
+        m_y.setReset(-70.f, 0.f);
         m_y.setUnit("dB");
         break;
 
@@ -65,6 +66,7 @@ void RTAPlot::updateAxis()
         m_y.setCentralLabel(m_y.min() - 1.f);
         m_y.setMax(100);
         m_y.setMin(60);
+        m_y.setReset(60.f, 100.f);
         m_y.setUnit("dB");
         break;
 
@@ -73,9 +75,11 @@ void RTAPlot::updateAxis()
         m_y.setCentralLabel(m_y.min() - 1.f);
         m_y.setMax(100);
         m_y.setMin(60);
+        m_y.setReset(60.f, 100.f);
         m_y.setUnit("ph");
         break;
     }
+    m_y.setMinorGridStep(5.f);
 }
 
 void RTAPlot::setMode(Chart::RTAPlot::Mode mode)

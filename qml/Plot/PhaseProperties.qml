@@ -36,6 +36,7 @@ Item {
             spacing: 0
 
             SelectableSpinBox {
+                visible: false
                 value: dataObject.xmin
                 onValueChanged: dataObject.xmin = value
                 from: dataObject.xLowLimit
@@ -56,6 +57,7 @@ Item {
             }
 
             SelectableSpinBox {
+                visible: false
                 value: dataObject.xmax
                 onValueChanged: dataObject.xmax = value
                 from: dataObject.xLowLimit
@@ -77,6 +79,7 @@ Item {
 
             SelectableSpinBox {
                 id: rotate
+                visible: false
                 value: dataObject.rotate
                 onValueChanged: {
                     if (Math.abs(value) > 180) {
@@ -116,6 +119,7 @@ Item {
             }
 
             SelectableSpinBox {
+                visible: false
                 value: dataObject.range
                 onValueChanged: dataObject.range = value;
                 from: 0
@@ -170,6 +174,7 @@ Item {
 
             ComboBox {
                 id: positivePeriod
+                visible: false
                 model: ["±180º", "0..360º"]
                 Layout.fillWidth: true
                 onCurrentTextChanged: {
@@ -183,7 +188,7 @@ Item {
                 text: qsTr("use coherence")
                 checked: dataObject.coherence
                 onCheckStateChanged: dataObject.coherence = checked
-                Layout.fillWidth: true
+
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("use coherence as alpha channel")
             }
@@ -195,9 +200,8 @@ Item {
                 value: dataObject.coherenceThreshold
                 tooltiptext: qsTr("coherence threshold")
                 onValueChanged: dataObject.coherenceThreshold = value
-                Layout.fillWidth: true
-                opacity: coherence.checked
-                enabled: coherence.checked
+                Layout.preferredWidth: 150
+                visible: coherence.checked
             }
 
             RowLayout {

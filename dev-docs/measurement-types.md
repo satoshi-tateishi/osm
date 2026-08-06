@@ -21,6 +21,8 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 
 チャートの種類を切り替えても、裏側で参照している`Measurement`ソースは1つなので、**FFT/収録に関する設定はどのチャートを見ていても共通**。チャートごとの設定パネル(下部の`PropetiesBar`に表示される)は、あくまで「その測定結果をどう表示するか(軸範囲・分解能・スケールなど)」を決めるもの。
 
+> このフォークでは劇場のスピーカーチューニング用途に絞るため、`qml/Chart.qml`の測定タイプ選択`DropDown`から**Step・Group Delay・Phase Delay・Level・Numeric・Crest Factor・Nyquist**の7種類を削除している(選択肢は`Spectrum/Magnitude/Phase/Impulse/Coherence/Spectrogram`の6種類のみ)。実装自体は残っているため、以前保存したプロジェクトファイルにこれらの型が含まれていても表示上は問題ない。詳細は[customizations.md](customizations.md)を参照。
+
 ---
 
 ## 1. 測定ソース(Measurement)自体の設定 — 全チャート共通

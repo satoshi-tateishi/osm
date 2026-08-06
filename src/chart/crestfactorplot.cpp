@@ -34,6 +34,10 @@ void CrestFactorPlot::setSettings(Settings *settings) noexcept
     if (settings && (settings->value("type") == "CrestFactor")) {
         XYPlot::setSettings(settings);
 
+        // x from/x to (frequency axis) is fixed and not user-adjustable, regardless of stored settings
+        m_x.setMin(20.f);
+        m_x.setMax(20'000.f);
+
         setUseGlobalPPO(m_settings->reactValue<CrestFactorPlot, bool>(
                              "useGlobalPPO", this,
                              &FrequencyBasedPlot::useGlobalPPOChanged, true).toBool());

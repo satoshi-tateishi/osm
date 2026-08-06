@@ -30,6 +30,7 @@
         <file alias="source/Union.qml">qml/source/Union.qml</file>
         <file alias="source/UnionProperties.qml">qml/source/UnionProperties.qml</file>
         <file alias="Plot/SpectrogramProperties.qml">qml/Plot/SpectrogramProperties.qml</file>
+        <file alias="Plot/SpectrogramThresholds.qml">qml/Plot/SpectrogramThresholds.qml</file>
         <file alias="source/StandardLine.qml">qml/source/StandardLine.qml</file>
         <file alias="source/StandardLineProperties.qml">qml/source/StandardLineProperties.qml</file>
         <file alias="menu/Top.qml">qml/menu/Top.qml</file>

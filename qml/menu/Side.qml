@@ -100,19 +100,8 @@ Drawer {
             oncompleted: function(button) {
                 button.text = (targetTraceModel.show ? "✓" : "") + qsTr("Show target");
             }
-        }
-        ListElement {
-            name: qsTr("Show Experimental");
-            onclick: function(button) {
-                applicationAppearance.experimentFunctions = ! applicationAppearance.experimentFunctions;
-                button.text = (applicationAppearance.experimentFunctions ? "✓" : "") + qsTr("Experimental");
-            }
-            oncompleted: function(button) {
-                button.text = (applicationAppearance.experimentFunctions ? "✓ " : "") + qsTr("Experimental");
-            }
             separator: true
         }
-
         ListElement {
             name: qsTr("Calculator")
             onclick: function() {

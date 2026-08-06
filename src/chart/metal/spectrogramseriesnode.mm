@@ -25,7 +25,7 @@ namespace Chart {
 
 SpectrogramSeriesNode::SpectrogramSeriesNode(QQuickItem *item) : XYSeriesNode(item),
     m_history(), m_refreshBuffers(true),
-    m_min(0), m_mid(0), m_max(0), m_pointsPerOctave(0), m_sourceSize(0),
+    m_lower(0), m_upper(0), m_pointsPerOctave(0), m_sourceSize(0),
     m_timer(),
     m_pipeline(nullptr), m_indiciesBuffer(nullptr)
 {
@@ -97,9 +97,8 @@ void SpectrogramSeriesNode::synchronizeSeries()
         }
         m_sourceSize = m_source->frequencyDomainSize();
         m_pointsPerOctave = spectrogramPlot->pointsPerOctave();
-        m_min = spectrogramPlot->min();
-        m_mid = spectrogramPlot->mid();
-        m_max = spectrogramPlot->max();
+        m_lower = spectrogramPlot->lower();
+        m_upper = spectrogramPlot->upper();
         m_plotActive = spectrogramPlot->active();
     }
 }
@@ -118,7 +117,7 @@ void SpectrogramSeriesNode::updateHistory()
     row.time = static_cast<int>(m_timer.restart());
     row.data.reserve(m_pointsPerOctave * 11);
     float value = 0.f;
-    static const QColor qred("#F44336"), qgreen("#8BC34A"), qblue("#2196F3");
+    static const QColor qred("#F44336"), qyellow("#FFEB3B"), qgreen("#8BC34A"), qblue("#2196F3");
     QColor pointColor;
 
     auto mix = [] (const QColor & first, const QColor & second, qreal k) {
@@ -138,25 +137,31 @@ void SpectrogramSeriesNode::updateHistory()
 
         value = 10 * log10f(value) + LEVEL_NORMALIZATION;
 
-        alpha = 1.0f;
         if (!std::isnormal(value) || value < floor) {
             value = floor;
         }
-        if (value > m_max) {
-            value = m_max;
-        }
 
-        if (value < m_min) {
-            // transparent -> blue
+        float seg = (m_upper - m_lower) / 3.0f;
+        if (value <= m_lower) {
+            // below lower threshold: no color at all
             pointColor = qblue;
-            pointColor = qblue;
-            alpha = (value - floor) / (m_min   - floor);
-        } else if (value < m_mid) {
+            alpha = 0.0f;
+        } else if (seg <= 0.f || value >= m_upper) {
+            // above upper threshold (or invalid lower/upper): solid red
+            pointColor = qred;
+            alpha = 1.0f;
+        } else if (value < m_lower + seg) {
             // blue -> green
-            pointColor = mix(qblue, qgreen, static_cast<qreal>((value - m_min) / (m_mid - m_min)));
-        } else  {
-            // green -> red
-            pointColor = mix(qgreen, qred, static_cast<qreal>((value - m_mid) / (m_max - m_mid)));
+            pointColor = mix(qblue, qgreen, static_cast<qreal>((value - m_lower) / seg));
+            alpha = 1.0f;
+        } else if (value < m_lower + 2.f * seg) {
+            // green -> yellow
+            pointColor = mix(qgreen, qyellow, static_cast<qreal>((value - (m_lower + seg)) / seg));
+            alpha = 1.0f;
+        } else {
+            // yellow -> red
+            pointColor = mix(qyellow, qred, static_cast<qreal>((value - (m_lower + 2.f * seg)) / seg));
+            alpha = 1.0f;
         }
 
         historyPoint rgb;

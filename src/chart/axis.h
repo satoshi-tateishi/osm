@@ -87,6 +87,12 @@ public:
     float helperValue() const;
     void setHelperValue(float helperValue);
 
+    bool gridVisible() const noexcept;
+    void setGridVisible(bool visible) noexcept;
+
+    float minorGridStep() const noexcept;
+    void setMinorGridStep(float step) noexcept;
+
 public slots:
     void needUpdate();
     void parentWidthChanged();
@@ -111,6 +117,8 @@ private:
     std::optional<float> m_period;
     float m_periodStart;
     QString m_unit;
+    bool m_gridVisible = true;
+    float m_minorGridStep = 0.f;
 
     struct {
         float min = 0;

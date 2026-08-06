@@ -241,6 +241,8 @@ MenuBar {
             text: qsTr("&Experiment functions")
             checkable: true
             checked: applicationAppearance.experimentFunctions
+            visible: false
+            enabled: false
             onCheckedChanged: {
                 applicationAppearance.experimentFunctions = experimentFunctions.checked;
             }

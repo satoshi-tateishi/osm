@@ -112,6 +112,32 @@ void Axis::setHelperValue(float helperValue)
     needUpdate();
 }
 
+bool Axis::gridVisible() const noexcept
+{
+    return m_gridVisible;
+}
+
+void Axis::setGridVisible(bool visible) noexcept
+{
+    if (m_gridVisible != visible) {
+        m_gridVisible = visible;
+        needUpdate();
+    }
+}
+
+float Axis::minorGridStep() const noexcept
+{
+    return m_minorGridStep;
+}
+
+void Axis::setMinorGridStep(float step) noexcept
+{
+    if (m_minorGridStep != step) {
+        m_minorGridStep = step;
+        needUpdate();
+    }
+}
+
 void Axis::reset()
 {
     setMin(m_reset.min);
@@ -225,6 +251,22 @@ void Axis::paint(QPainter *painter) noexcept
         p2.setY(static_cast<int>(m_direction == Horizontal ? padding.top : heightf() - padding.bottom - t));
     };
 
+    if (m_gridVisible && m_minorGridStep > 0.f) {
+        QColor minorLineColor = m_palette.lineColor();
+        minorLineColor.setAlpha(minorLineColor.alpha() / 2);
+        QPen minorLinePen(minorLineColor, 1);
+        painter->setPen(minorLinePen);
+
+        //draw minor grid first so the main grid (drawn below) stays fully visible where they coincide
+        float start = std::ceil(m_min / m_minorGridStep) * m_minorGridStep;
+        for (float v = start; v <= m_max; v += m_minorGridStep) {
+            setPoints(v);
+            if (!limit.contains(p1) || !limit.contains(p2))
+                continue;
+            painter->drawLine(p1, p2);
+        }
+    }
+
     for_each(m_labels.begin(), m_labels.end(), [&](float & l) {
         setPoints(l);
         //do not draw lines out of padding
@@ -236,7 +278,9 @@ void Axis::paint(QPainter *painter) noexcept
         } else {
             painter->setPen(linePen);
         }
-        painter->drawLine(p1, p2);
+        if (m_gridVisible) {
+            painter->drawLine(p1, p2);
+        }
 
         painter->setPen(textPen);
         textRect.moveTo(
