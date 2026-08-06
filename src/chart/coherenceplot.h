@@ -34,8 +34,6 @@ public:
 class CoherencePlot : public FrequencyBasedPlot
 {
     Q_OBJECT
-    Q_PROPERTY(unsigned int pointsPerOctave READ pointsPerOctave WRITE setPointsPerOctave NOTIFY
-               pointsPerOctaveChanged)
     Q_PROPERTY(Type type READ type WRITE setType NOTIFY typeChanged)
     Q_PROPERTY(QColor thresholdColor READ thresholdColor WRITE setThresholdColor NOTIFY thresholdColorChanged)
     Q_PROPERTY(float threshold READ threshold WRITE setThreshold NOTIFY thresholdChanged)
@@ -49,9 +47,6 @@ public:
     static constexpr float THRESHOLD_SNR        = 10;
 
     CoherencePlot(Settings *settings, QQuickItem *parent = Q_NULLPTR);
-
-    unsigned int pointsPerOctave() const;
-    void setPointsPerOctave(unsigned int p);
 
     Type type() const;
     void setType(const Type &);
@@ -70,7 +65,6 @@ public:
     void setShowThreshold(const bool &showThreshold);
 
 signals:
-    void pointsPerOctaveChanged(unsigned int);
     void typeChanged(Type);
     void thresholdChanged(float);
     void thresholdColorChanged(QColor);

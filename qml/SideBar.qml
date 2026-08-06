@@ -86,6 +86,20 @@ Item {
 
         Generator {}
 
+        RowLayout {
+            Layout.fillWidth: true
+
+            TitledCombo {
+                title: qsTr("smoothing")
+                tooltip: qsTr("global smoothing, used by measurements set to \"Global\"")
+                Layout.fillWidth: true
+                readonly property var ppoValues: [1, 3, 6, 12, 24, 48]
+                model: ["1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct"]
+                currentIndex: ppoValues.indexOf(globalSmoothing.pointsPerOctave)
+                onCurrentIndexChanged: globalSmoothing.pointsPerOctave = ppoValues[currentIndex]
+            }
+        }
+
         TargetTrace {
             visible: targetTraceModel.show
         }

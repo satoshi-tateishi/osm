@@ -20,9 +20,11 @@ using namespace Chart;
 
 FrequencyBasedPlot::FrequencyBasedPlot(Settings *settings, QQuickItem *parent): XYPlot(settings,
                                                                                            parent),
-    m_pointsPerOctave(12), m_coherenceThreshold(0.7f), m_coherence(true)
+    m_pointsPerOctave(12), m_useGlobalPPO(true), m_coherenceThreshold(0.7f), m_coherence(true)
 {
     configureXAxis();
+    connect(GlobalSmoothing::instance(), &GlobalSmoothing::pointsPerOctaveChanged, this,
+            &FrequencyBasedPlot::applyGlobalPPO);
 }
 void FrequencyBasedPlot::setCoherenceThreshold(float coherenceThreshold) noexcept
 {
@@ -59,6 +61,31 @@ void FrequencyBasedPlot::setPointsPerOctave(unsigned int p) noexcept
     }
 }
 
+void FrequencyBasedPlot::applyGlobalPPO(unsigned int p)
+{
+    if (m_useGlobalPPO) {
+        setPointsPerOctave(p);
+    }
+}
+
+bool FrequencyBasedPlot::useGlobalPPO() const noexcept
+{
+    return m_useGlobalPPO;
+}
+
+void FrequencyBasedPlot::setUseGlobalPPO(bool use) noexcept
+{
+    if (m_useGlobalPPO == use)
+        return;
+
+    m_useGlobalPPO = use;
+    emit useGlobalPPOChanged(m_useGlobalPPO);
+
+    if (m_useGlobalPPO) {
+        setPointsPerOctave(GlobalSmoothing::instance()->pointsPerOctave());
+    }
+}
+
 bool FrequencyBasedPlot::coherence() const noexcept
 {
     return  m_coherence;
@@ -86,9 +113,16 @@ void FrequencyBasedPlot::setSettings(Settings *settings) noexcept
     setCoherenceThreshold(
         m_settings->reactValue<FrequencyBasedPlot, float>("coherenceThreshold", this,
                                                           &FrequencyBasedPlot::coherenceThresholdChanged, m_coherenceThreshold).toFloat());
-    setPointsPerOctave(
-        m_settings->reactValue<FrequencyBasedPlot, unsigned int>("ppo", this,
-                                                                 &FrequencyBasedPlot::pointsPerOctaveChanged, m_pointsPerOctave).toUInt());
+    setUseGlobalPPO(
+        m_settings->reactValue<FrequencyBasedPlot, bool>("useGlobalPPO", this,
+                                                          &FrequencyBasedPlot::useGlobalPPOChanged, true).toBool());
+    if (m_useGlobalPPO) {
+        setPointsPerOctave(GlobalSmoothing::instance()->pointsPerOctave());
+    } else {
+        setPointsPerOctave(
+            m_settings->reactValue<FrequencyBasedPlot, unsigned int>("ppo", this,
+                                                                     &FrequencyBasedPlot::pointsPerOctaveChanged, m_pointsPerOctave).toUInt());
+    }
 }
 void FrequencyBasedPlot::storeSettings() noexcept
 {
@@ -99,6 +133,7 @@ void FrequencyBasedPlot::storeSettings() noexcept
     m_settings->setValue("coherence", m_coherence);
     m_settings->setValue("coherenceThreshold", m_coherenceThreshold);
     m_settings->setValue("ppo", m_pointsPerOctave);
+    m_settings->setValue("useGlobalPPO", m_useGlobalPPO);
 }
 
 unsigned int FrequencyBasedPlot::pointsPerOctave() const noexcept

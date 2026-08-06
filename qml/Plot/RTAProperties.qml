@@ -188,15 +188,22 @@ Item {
                 tooltip: qsTr("smoothing")
                 visible: mode.model[mode.currentIndex] !== "lines"
                 readonly property var ppoValues: [1, 3, 6, 12, 24, 48, 0]
-                model: ["1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct", "off"]
+                model: ["Global", "1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct", "off"]
                 currentIndex: {
-                    ppoValues.indexOf(dataObject.pointsPerOctave)
+                    if (dataObject.useGlobalPPO) return 0;
+                    return 1 + ppoValues.indexOf(dataObject.pointsPerOctave);
                 }
 
                 onCurrentIndexChanged: {
-                    dataObject.pointsPerOctave = ppoValues[currentIndex];
-                    if (ppoValues[currentIndex] === 0 && dataObject.mode === 1 /*bars*/) {
-                        dataObject.mode = 0;
+                    if (currentIndex === 0) {
+                        dataObject.useGlobalPPO = true;
+                    } else {
+                        dataObject.useGlobalPPO = false;
+                        var ppo = ppoValues[currentIndex - 1];
+                        dataObject.pointsPerOctave = ppo;
+                        if (ppo === 0 && dataObject.mode === 1 /*bars*/) {
+                            dataObject.mode = 0;
+                        }
                     }
                 }
             }

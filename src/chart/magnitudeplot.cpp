@@ -26,7 +26,7 @@ MagnitudePlot::MagnitudePlot(Settings *settings, QQuickItem *parent) :
     FrequencyBasedPlot(settings, parent), m_invert(false), m_mode(Linear), m_sensor(2.6)
 {
     setMode(dB);
-    m_x.setReset(40.f, 20'000.f);
+    m_x.setReset(20.f, 20'000.f);
     m_x.reset();
     m_pointsPerOctave = 6;
     setFlag(QQuickItem::ItemHasContents);

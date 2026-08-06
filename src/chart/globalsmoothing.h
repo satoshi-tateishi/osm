@@ -1,6 +1,6 @@
 /**
  *  OSM
- *  Copyright (C) 2021  Pavel Smokotnin
+ *  Copyright (C) 2026  Pavel Smokotnin
 
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,27 +15,33 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef CHART_CRESTFACTORPLOT_H
-#define CHART_CRESTFACTORPLOT_H
+#ifndef GLOBALSMOOTHING_H
+#define GLOBALSMOOTHING_H
 
-#include "frequencybasedplot.h"
+#include "settings.h"
 
 namespace Chart {
 
-class CrestFactorPlot : public Chart::FrequencyBasedPlot
+class GlobalSmoothing : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(unsigned int pointsPerOctave READ pointsPerOctave WRITE setPointsPerOctave NOTIFY
+               pointsPerOctaveChanged)
 
 public:
-    CrestFactorPlot(Settings *settings, QQuickItem *parent = Q_NULLPTR);
+    explicit GlobalSmoothing(Settings *settings);
+    static GlobalSmoothing *instance();
 
-    virtual void setSettings(Settings *settings) noexcept override;
-    virtual void storeSettings() noexcept override;
+    unsigned int pointsPerOctave() const noexcept;
+    void setPointsPerOctave(unsigned int p) noexcept;
 
-protected:
-    virtual SeriesItem *createSeriesFromSource(const Shared::Source &source) override;
+signals:
+    void pointsPerOctaveChanged(unsigned int);
+
+private:
+    Settings *settings() const;
+    static GlobalSmoothing *s_instance;
 };
 
-} // namespace chart
-
-#endif // CHART_CRESTFACTORPLOT_H
+}
+#endif // GLOBALSMOOTHING_H

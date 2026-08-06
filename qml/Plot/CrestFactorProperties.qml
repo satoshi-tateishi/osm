@@ -123,17 +123,22 @@ Item {
         spacing: 0
 
         TitledCombo {
-            title: qsTr("ppo")
-            tooltip: qsTr("points per octave")
+            title: qsTr("")
+            tooltip: qsTr("smoothing")
             Layout.preferredWidth: 170
-            model: [1, 3, 6, 12, 24, 48]
+            readonly property var ppoValues: [1, 3, 6, 12, 24, 48]
+            model: ["Global", "1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct"]
             currentIndex: {
-                var ppo = dataObject.pointsPerOctave;
-                model.indexOf(ppo);
+                if (dataObject.useGlobalPPO) return 0;
+                return 1 + ppoValues.indexOf(dataObject.pointsPerOctave);
             }
             onCurrentIndexChanged: {
-                var ppo = model[currentIndex];
-                dataObject.pointsPerOctave = ppo;
+                if (currentIndex === 0) {
+                    dataObject.useGlobalPPO = true;
+                } else {
+                    dataObject.useGlobalPPO = false;
+                    dataObject.pointsPerOctave = ppoValues[currentIndex - 1];
+                }
             }
         }
 

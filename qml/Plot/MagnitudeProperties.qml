@@ -153,12 +153,18 @@ Item {
                 tooltip: qsTr("smoothing")
                 Layout.preferredWidth: 140
                 readonly property var ppoValues: [1, 3, 6, 12, 24, 48]
-                model: ["1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct"]
+                model: ["Global", "1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct"]
                 currentIndex: {
-                    ppoValues.indexOf(dataObject.pointsPerOctave)
+                    if (dataObject.useGlobalPPO) return 0;
+                    return 1 + ppoValues.indexOf(dataObject.pointsPerOctave);
                 }
                 onCurrentIndexChanged: {
-                    dataObject.pointsPerOctave = ppoValues[currentIndex];
+                    if (currentIndex === 0) {
+                        dataObject.useGlobalPPO = true;
+                    } else {
+                        dataObject.useGlobalPPO = false;
+                        dataObject.pointsPerOctave = ppoValues[currentIndex - 1];
+                    }
                 }
             }
 

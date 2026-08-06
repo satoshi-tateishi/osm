@@ -23,7 +23,7 @@
 
 - **Y axis modeを`dB`固定化**: `Linear`/`Impedance`モードの切り替えUI(コンボボックス)と、`Impedance`モード専用だった`Sensor resistance`入力欄を削除。`MagnitudePlot::setSettings()`でも保存済み設定から`mode`を復元しないようにした(常にコンストラクタ既定値の`dB`のまま)。
 - **デフォルトの軸範囲を変更**:
-  - X軸: `20Hz〜20,000Hz` → `40Hz〜20,000Hz`(`MagnitudePlot`コンストラクタで`m_x.setReset(40.f, 20'000.f)`)
+  - X軸: `20Hz〜20,000Hz` → 一時期`40Hz〜20,000Hz`にしていたが、`20Hz〜20,000Hz`に戻した(`MagnitudePlot`コンストラクタの`m_x.setReset(20.f, 20'000.f)`。Spectrum/Phaseと表示を揃えるため)
   - Y軸(dBモード): `-18dB〜18dB` → `-12dB〜12dB`(`MagnitudePlot::setMode()`のdBケースで`m_y.setReset(-12.f, 12.f)`)
 - **軸範囲入力欄の小数点表示を廃止**: `x from`/`x to`/`y from`/`y to`の`FloatSpinBox`に`decimals: 0`を指定し、整数表示に統一。
 - **`x from`/`x to`のナッジ(上下の増減ボタン)を非表示化**: `FloatSpinBox`に`indicators: false`を指定。
@@ -58,7 +58,7 @@
 
 `src/chart/rtaplot.cpp`、`qml/Plot/RTAProperties.qml`
 
-- **デフォルトのX軸範囲を変更**: `20Hz〜20,000Hz` → `40Hz〜20,000Hz`(`RTAPlot`コンストラクタで`m_x.setReset(40.f, 20'000.f)`)。Y軸範囲・小数点表示は変更なし。
+- **デフォルトのX軸範囲**: `20Hz〜20,000Hz` → 一時期`40Hz〜20,000Hz`にしていたが、`20Hz〜20,000Hz`に戻した(`RTAPlot`コンストラクタの`m_x.setReset(20.f, 20'000.f)`。Magnitude/Phaseと表示を揃えるため)。Y軸範囲・小数点表示は変更なし。
 - **`x from`/`x to`のナッジ(上下の増減ボタン)を非表示化**: `SelectableSpinBox`(標準の`SpinBox`)に`down.indicator.width: 0`/`up.indicator.width: 0`を指定(`FloatSpinBox`の`indicators`相当をSpinBox側で直接指定)。
 - **`x from`/`x to`の見た目調整**: 間に`" - "`区切りの`Label`を追加し、`implicitWidth`を`170`→`90`に縮小(`Layout.fillWidth: true`も削除)。Magnitudeと同様の対応。
 - **`y from`/`y to`の幅調整**: ナッジ(+/-)は残したまま`implicitWidth`を`170`→`150`に調整(`Layout.fillWidth: true`は削除)。x軸グループとy軸グループの間に`Layout.preferredWidth: 15`の`Item`(スペーサー)を挿入。
@@ -66,14 +66,27 @@
 - **smoothingのデフォルトを"1/6 oct"に変更**: `RTAPlot`コンストラクタで`m_pointsPerOctave = 0;`(off)だったのを`= 6;`に変更。
 - (参考・変更なし) Spectrumの帯域平均は元々パワー(エネルギー)平均で実装済み(`RTASeriesRenderer::renderPPOLine()`/`renderBars()`で`module(i)^2`を積算してから`10*log10()`)だったため、Magnitudeのような修正は不要だった。
 
-## チャート上のジェスチャー操作の無効化(Magnitude / Spectrum)
+## Global smoothing機能の追加・smoothing表示の全測定タイプ統一
+
+`src/chart/globalsmoothing.h`/`.cpp`(新規)、`src/chart/frequencybasedplot.h`/`.cpp`、`src/chart/coherenceplot.h`/`.cpp`、`src/chart/crestfactorplot.h`/`.cpp`、`src/chart/nyquistplot.cpp`、`src/main.cpp`、`OpenSoundMeter.pro`、`qml/Plot/*.qml`(全9測定タイプ)、`qml/SideBar.qml`
+
+- **smoothing表示を全9測定タイプ(RTA/Magnitude/Phaseに加え、Nyquist・GroupDelay・CrestFactor・Coherence・PhaseDelay・Spectrogram)で統一**: 旧来の`title: "ppo"`/`tooltip: "points per octave"`/生数値`model`を、既存のRTA/Magnitude/Phaseと同じ`title: ""`/`tooltip: "smoothing"`/`"1/N oct"`文字列表示に統一。`qml/ChartProperties.qml`はどこからも読み込まれないデッドコードと判明したため対象外(未変更)。
+- **Global smoothing機能を追加**: 各測定タイプのsmoothingコンボボックスの先頭に`"Global"`を追加し、デフォルト選択を`"Global"`にした(`useGlobalPPO`プロパティ、デフォルト`true`)。サイドバーの`Generator`直下に、Global値を一括変更する新規コンボボックス(`qml/SideBar.qml`)を追加。"Global"を選択している測定は、この値の変更に追従する。
+  - 新規クラス`Chart::GlobalSmoothing`(`GeneratorThread`と同様の静的シングルトンQObject、`Settings`ルートグループのキー`"globalSmoothing"`に永続化。デフォルト値`6`(1/6 oct)、`main.cpp`で1つだけ生成し`globalSmoothing`という名前でQMLに公開)。
+  - `FrequencyBasedPlot`に`useGlobalPPO`(bool)プロパティを追加。コンストラクタで`GlobalSmoothing::pointsPerOctaveChanged`に接続し、`useGlobalPPO`が`true`の間は変更を`setPointsPerOctave()`へ反映する。`useGlobalPPO`は`"useGlobalPPO"`キーで永続化(既存の`"ppo"`キーは`useGlobalPPO=false`時の手動値として引き続き使用)。
+- **副次的なバグ修正(Global機能の実装に伴い必須だったもの)**:
+  - `CoherencePlot`/`CrestFactorPlot`は`pointsPerOctave`/`setPointsPerOctave`/`pointsPerOctaveChanged`を独自に再宣言し、基底クラス`FrequencyBasedPlot`の実装(および範囲チェック`isPointsPerOctaveValid`)を隠蔽していた。この隠蔽により、Global値の変更をQMLへ反応的に伝えられない(NOTIFYシグナルが別物になる)ため、両クラスの独自実装を削除し基底クラスの実装に一本化した。設定ファイルの保存キーは両クラスとも従来の`"pointsPerOctave"`のまま維持し、既存の保存値との後方互換を保っている。副次効果として、これまで範囲チェックが無かった(1〜48の外の値を設定可能だった)バグも解消された。
+  - `NyquistPlot::setSettings`/`storeSettings`が`XYPlot::setSettings`/`storeSettings`を直接呼んでおり、`FrequencyBasedPlot`が持つ`ppo`/`coherence`/`coherenceThreshold`/`useGlobalPPO`が設定ファイルに保存・復元されていなかった(実行中は常にコンストラクタの既定値)。`FrequencyBasedPlot::setSettings`/`storeSettings`を呼ぶよう修正し、これらの値も他の測定タイプと同様に永続化されるようにした。
+- **挙動変更の注意**: 上記の統一に伴い、Magnitude/Spectrum(1/6 oct)以外の測定タイプ(従来12、Spectrogramのみ48)も含め、初回起動時は全て"Global"(初期値1/6 oct)に従う見た目になる。個別のデフォルト値を保ちたい場合は、各測定のプロパティパネルでGlobal以外の値を手動選択する必要がある。
+
+## チャート上のジェスチャー操作の無効化(Magnitude / Spectrum / Phase)
 
 `qml/Chart.qml`
 
-- Magnitude・Spectrumのチャート表示エリア上での、トラックパッドのピンチイン/アウト(2本指ズーム)・2本指ドラッグ(パン)・マウスホイール/2本指スクロールによるズームを無効化した。`type === "Magnitude" || type === "Spectrum"`のときは`touchArea.onGestureStarted`と`opener.onWheel`の先頭で処理を`return`するようにしている。
-- 目的: 軸範囲(x from/x to/y from/y to)の変更を、誤操作を避けるためプロパティパネルからの入力のみに限定するため。
+- Magnitude・Spectrum・Phaseのチャート表示エリア上での、トラックパッドのピンチイン/アウト(2本指ズーム)・2本指ドラッグ(パン)・マウスホイール/2本指スクロールによるズームを無効化した。`type === "Magnitude" || type === "Spectrum" || type === "Phase"`のときは`touchArea.onGestureStarted`と`opener.onWheel`の先頭で処理を`return`するようにしている。
+- 目的: 軸範囲(x from/x to/y from/y to)の変更を、誤操作を避けるためプロパティパネルからの入力のみに限定するため。Phaseは当初対象外だったが、Magnitude/Spectrumと同様の理由で追加。
 - ダブルクリックでの軸リセット(`chart.plot.resetAxis()`)と、右クリックでの計算機ポップアップ(`openCalculator`)は影響を受けず、従来通り動作する。
-- 他の測定タイプ(Phase, Coherence, Group Delayなど)ではジェスチャー操作は無効化しておらず、従来通り。
+- 他の測定タイプ(Coherence, Group Delayなど)ではジェスチャー操作は無効化しておらず、従来通り。
 
 ## "save chart as an image"ボタンの非表示化(全測定タイプ共通)
 

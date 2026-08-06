@@ -21,6 +21,7 @@ SOURCES += src/main.cpp \
     src/chart/crestfactorplot.cpp \
     src/chart/cursorhelper.cpp \
     src/chart/frequencybasedplot.cpp \
+    src/chart/globalsmoothing.cpp \
     src/chart/frequencybasedserieshelper.cpp \
     src/chart/groupdelayplot.cpp \
     src/chart/levelobject.cpp \
@@ -176,6 +177,7 @@ HEADERS += \
     src/chart/crestfactorplot.h \
     src/chart/cursorhelper.h \
     src/chart/frequencybasedplot.h \
+    src/chart/globalsmoothing.h \
     src/chart/frequencybasedserieshelper.h \
     src/chart/groupdelayplot.h \
     src/chart/levelobject.h \

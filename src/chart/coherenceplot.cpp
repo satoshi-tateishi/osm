@@ -29,10 +29,6 @@ CoherencePlot::CoherencePlot(Settings *settings, QQuickItem *parent): FrequencyB
     setFlag(QQuickItem::ItemHasContents);
 }
 
-unsigned int CoherencePlot::pointsPerOctave() const
-{
-    return m_pointsPerOctave;
-}
 float CoherencePlot::threshold() const
 {
     return m_threshold;
@@ -74,16 +70,6 @@ void CoherencePlot::setShowThreshold(const bool &showThreshold)
         m_thresholdLine.setVisible(m_showThreshold);
         m_thresholdLine.update();
     }
-}
-
-void CoherencePlot::setPointsPerOctave(unsigned int p)
-{
-    if (m_pointsPerOctave == p)
-        return;
-
-    m_pointsPerOctave = p;
-    emit pointsPerOctaveChanged(m_pointsPerOctave);
-    update();
 }
 
 CoherencePlot::Type CoherencePlot::type() const
@@ -132,9 +118,16 @@ void CoherencePlot::setSettings(Settings *settings) noexcept
 
         setType(
             m_settings->reactValue<CoherencePlot, CoherencePlot::Type>("ctype", this, &CoherencePlot::typeChanged, m_type));
-        setPointsPerOctave(
-            m_settings->reactValue<CoherencePlot, unsigned int>("pointsPerOctave", this,
-                                                                &CoherencePlot::pointsPerOctaveChanged, m_pointsPerOctave).toUInt());
+        setUseGlobalPPO(
+            m_settings->reactValue<CoherencePlot, bool>("useGlobalPPO", this,
+                                                        &FrequencyBasedPlot::useGlobalPPOChanged, true).toBool());
+        if (useGlobalPPO()) {
+            setPointsPerOctave(GlobalSmoothing::instance()->pointsPerOctave());
+        } else {
+            setPointsPerOctave(
+                m_settings->reactValue<CoherencePlot, unsigned int>("pointsPerOctave", this,
+                                                                    &FrequencyBasedPlot::pointsPerOctaveChanged, m_pointsPerOctave).toUInt());
+        }
         setThreshold(
             m_settings->reactValue<CoherencePlot, float>("threshold", this,
                                                          &CoherencePlot::thresholdChanged, m_threshold).toFloat());
@@ -148,6 +141,7 @@ void CoherencePlot::storeSettings() noexcept
     XYPlot::storeSettings();
     m_settings->setValue("ctype", m_type);
     m_settings->setValue("pointsPerOctave", m_pointsPerOctave);
+    m_settings->setValue("useGlobalPPO", m_useGlobalPPO);
     m_settings->setValue("coherenceThreshold", m_threshold);
 }
 

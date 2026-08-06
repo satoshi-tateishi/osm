@@ -19,12 +19,14 @@
 #define FREQUENCYBASEDPLOT_H
 
 #include "xyplot.h"
+#include "globalsmoothing.h"
 namespace Chart {
 class FrequencyBasedPlot : public XYPlot
 {
     Q_OBJECT
     Q_PROPERTY(unsigned int pointsPerOctave READ pointsPerOctave WRITE setPointsPerOctave NOTIFY
                pointsPerOctaveChanged)
+    Q_PROPERTY(bool useGlobalPPO READ useGlobalPPO WRITE setUseGlobalPPO NOTIFY useGlobalPPOChanged)
     Q_PROPERTY(bool coherence READ coherence WRITE setCoherence NOTIFY coherenceChanged)
     Q_PROPERTY(float coherenceThreshold READ coherenceThreshold WRITE setCoherenceThreshold NOTIFY
                coherenceThresholdChanged)
@@ -38,6 +40,9 @@ public:
     unsigned int pointsPerOctave() const noexcept;
     void setPointsPerOctave(unsigned int p) noexcept;
 
+    bool useGlobalPPO() const noexcept;
+    void setUseGlobalPPO(bool use) noexcept;
+
     bool coherence() const noexcept;
     void setCoherence(bool coherence) noexcept;
 
@@ -46,14 +51,19 @@ public:
 
 signals:
     void pointsPerOctaveChanged(unsigned int);
+    void useGlobalPPOChanged(bool);
     void coherenceChanged(bool);
     void coherenceThresholdChanged(float);
+
+protected slots:
+    void applyGlobalPPO(unsigned int p);
 
 protected:
     void configureXAxis();
     virtual bool isPointsPerOctaveValid(unsigned int &value) const;
 
     unsigned int m_pointsPerOctave;
+    bool m_useGlobalPPO;
     float m_coherenceThreshold;
     bool m_coherence;
 };

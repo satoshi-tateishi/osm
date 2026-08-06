@@ -149,15 +149,23 @@ Item {
     }
     RowLayout {
         TitledCombo {
-            title: qsTr("ppo")
-            tooltip: qsTr("points per octave")
-            Layout.preferredWidth: 110
-            model: [1, 3, 6, 12, 24, 48]
-            Component.onCompleted: {
-                currentIndex = model.indexOf(dataObject.pointsPerOctave);
+            title: qsTr("")
+            tooltip: qsTr("smoothing")
+            Layout.preferredWidth: 140
+            readonly property var ppoValues: [1, 3, 6, 12, 24, 48]
+            model: ["Global", "1/1 oct", "1/3 oct", "1/6 oct", "1/12 oct", "1/24 oct", "1/48 oct"]
+            currentIndex: {
+                if (dataObject.useGlobalPPO) return 0;
+                return 1 + ppoValues.indexOf(dataObject.pointsPerOctave);
             }
-            currentIndex: model.indexOf(dataObject.pointsPerOctave);
-            onCurrentIndexChanged: dataObject.pointsPerOctave = model[currentIndex];
+            onCurrentIndexChanged: {
+                if (currentIndex === 0) {
+                    dataObject.useGlobalPPO = true;
+                } else {
+                    dataObject.useGlobalPPO = false;
+                    dataObject.pointsPerOctave = ppoValues[currentIndex - 1];
+                }
+            }
         }
 
         SelectableSpinBox {

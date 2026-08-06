@@ -29,30 +29,22 @@ CrestFactorPlot::CrestFactorPlot(Settings *settings, QQuickItem *parent) : Frequ
     setFlag(QQuickItem::ItemHasContents);
 }
 
-unsigned int CrestFactorPlot::pointsPerOctave() const
-{
-    return m_pointsPerOctave;
-}
-
-void CrestFactorPlot::setPointsPerOctave(unsigned int p)
-{
-    if (m_pointsPerOctave == p)
-        return;
-
-    m_pointsPerOctave = p;
-    emit pointsPerOctaveChanged(m_pointsPerOctave);
-    update();
-}
-
 void CrestFactorPlot::setSettings(Settings *settings) noexcept
 {
     if (settings && (settings->value("type") == "CrestFactor")) {
         XYPlot::setSettings(settings);
 
-        setPointsPerOctave(m_settings->reactValue<CrestFactorPlot, unsigned int>(
-                               "pointsPerOctave", this,
-                               &CrestFactorPlot::pointsPerOctaveChanged,
-                               m_pointsPerOctave).toUInt());
+        setUseGlobalPPO(m_settings->reactValue<CrestFactorPlot, bool>(
+                             "useGlobalPPO", this,
+                             &FrequencyBasedPlot::useGlobalPPOChanged, true).toBool());
+        if (useGlobalPPO()) {
+            setPointsPerOctave(GlobalSmoothing::instance()->pointsPerOctave());
+        } else {
+            setPointsPerOctave(m_settings->reactValue<CrestFactorPlot, unsigned int>(
+                                   "pointsPerOctave", this,
+                                   &FrequencyBasedPlot::pointsPerOctaveChanged,
+                                   m_pointsPerOctave).toUInt());
+        }
     }
 }
 
@@ -63,6 +55,7 @@ void CrestFactorPlot::storeSettings() noexcept
 
     XYPlot::storeSettings();
     m_settings->setValue("pointsPerOctave", m_pointsPerOctave);
+    m_settings->setValue("useGlobalPPO", m_useGlobalPPO);
 }
 
 } // namespace chart

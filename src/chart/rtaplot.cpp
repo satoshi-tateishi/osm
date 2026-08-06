@@ -38,7 +38,7 @@ RTAPlot::RTAPlot(Settings *settings, QQuickItem *parent): FrequencyBasedPlot(set
     m_y.setUnit("dB");
     updateAxis();
 
-    m_x.setReset(40.f, 20'000.f);
+    m_x.setReset(20.f, 20'000.f);
     m_x.reset();
     setFlag(QQuickItem::ItemHasContents);
 

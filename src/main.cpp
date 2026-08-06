@@ -43,6 +43,7 @@
 #include "remote/server.h"
 #include "remote/remoteclient.h"
 #include "chart/meterplot.h"
+#include "chart/globalsmoothing.h"
 
 #ifdef GRAPH_METAL
 #include "src/chart/metal/seriesnode.h"
@@ -86,6 +87,7 @@ int main(int argc, char *argv[])
 
     Settings settings;
     Appearance appearence(&settings);
+    Chart::GlobalSmoothing globalSmoothing(&settings);
     audio::Client::getInstance();
     auto generator = std::make_shared<Generator>(settings.getGroup("generator"));
     Shared::SourceList sourceList = std::make_shared<SourceList>();
@@ -127,6 +129,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("appVersion", QString(APP_GIT_VERSION));
     engine.rootContext()->setContextProperty("applicationSettings", &settings);
     engine.rootContext()->setContextProperty("applicationAppearance", &appearence);
+    engine.rootContext()->setContextProperty("globalSmoothing", &globalSmoothing);
     engine.rootContext()->setContextProperty("sourceList", sourceList.get());
     engine.rootContext()->setContextProperty("generatorModel", generator.get());
     engine.rootContext()->setContextProperty("targetTraceModel", t);

@@ -35,7 +35,7 @@ NyquistPlot::NyquistPlot(Settings *settings, QQuickItem *parent) : FrequencyBase
 void NyquistPlot::setSettings(Settings *settings) noexcept
 {
     if (settings && (settings->value("type") == "Nyquist")) {
-        XYPlot::setSettings(settings);
+        FrequencyBasedPlot::setSettings(settings);
     }
 }
 
@@ -44,7 +44,7 @@ void NyquistPlot::storeSettings() noexcept
     if (!m_settings)
         return;
 
-    XYPlot::storeSettings();
+    FrequencyBasedPlot::storeSettings();
 }
 
 } // namespace chart

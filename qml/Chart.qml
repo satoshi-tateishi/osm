@@ -156,7 +156,7 @@ Item {
 
         onGestureStarted: function (gestureEvent) {
 
-            if (type === "Magnitude" || type === "Spectrum") {
+            if (type === "Magnitude" || type === "Spectrum" || type === "Phase") {
                 return;
             }
 
@@ -272,7 +272,7 @@ Item {
 
             onWheel: function (e) {
 
-                if (type === "Magnitude" || type === "Spectrum") {
+                if (type === "Magnitude" || type === "Spectrum" || type === "Phase") {
                     return;
                 }
 
