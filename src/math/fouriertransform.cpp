@@ -17,6 +17,8 @@
  */
 #include "fouriertransform.h"
 #include <QtMath>
+#include <algorithm>
+#include <cmath>
 #ifndef USE_SSE2
 #define USE_SSE2
 #endif
@@ -149,6 +151,36 @@ void FourierTransform::setAlign(Align newAlign)
 void FourierTransform::setLogWindowDenominator(unsigned int newLogWindowDenominator)
 {
     m_logWindowDenominator = newLogWindowDenominator;
+}
+
+void FourierTransform::setTfcEnabled(bool enabled)
+{
+    m_tfcEnabled = enabled;
+}
+
+bool FourierTransform::tfcEnabled() const
+{
+    return m_tfcEnabled;
+}
+
+void FourierTransform::setTfcReferenceTime(float milliseconds)
+{
+    m_tfcReferenceTime = milliseconds;
+}
+
+float FourierTransform::tfcReferenceTime() const
+{
+    return m_tfcReferenceTime;
+}
+
+void FourierTransform::setTfcReferenceFrequency(float hz)
+{
+    m_tfcReferenceFrequency = hz;
+}
+
+float FourierTransform::tfcReferenceFrequency() const
+{
+    return m_tfcReferenceFrequency;
 }
 
 long FourierTransform::f2i(double frequency, int sampleRate) const
@@ -468,21 +500,48 @@ GNU_ALIGN void FourierTransform::prepareLog()
     unsigned int startWindow = pow(2, 16), startOffset = 1'344'000 / sampleRate(); // 28 for 48k
     float wFactor = powf(10.f, 1.f / (-octaves * ppo / 2.5));
     float fFactor = powf(1000.f, 1.f / (ppo * octaves));
-    unsigned int N, offset;
-    float frequency;
     m_logBasis.resize(ppo * octaves);
     m_fastA.resize(ppo * octaves);
     m_fastB.resize(ppo * octaves);
-    setSize(startWindow);
+
+    constexpr unsigned int tfcMinWindow = 8;
+    const unsigned int tfcMaxWindow = std::max(tfcMinWindow, 2 * sampleRate());
+    const double tfcCycles = (m_tfcReferenceTime / 1000.0) * m_tfcReferenceFrequency;
+    const auto tfcWindowSize = [tfcCycles, tfcMaxWindow](float frequency) {
+        const double requestedSize = tfcCycles / frequency;
+        if (!std::isfinite(requestedSize)) {
+            return requestedSize > 0.0 ? tfcMaxWindow : tfcMinWindow;
+        }
+        const double roundedSize = std::round(requestedSize);
+        return static_cast<unsigned int>(std::clamp(
+            roundedSize,
+            static_cast<double>(tfcMinWindow),
+            static_cast<double>(tfcMaxWindow)));
+    };
+
+    unsigned int requiredSize = startWindow;
+
+    // 整数切り捨ても含めた既存の対数周波数グリッドを、
+    // この後で選択する窓長の決定方法から独立させる。
+    for (unsigned int i = 0; i < m_logBasis.size(); ++i) {
+        const unsigned int referenceN = startWindow * pow(wFactor, i);
+        const unsigned int offset = startOffset * pow(wFactor * fFactor, i);
+        m_logBasis[i].frequency = static_cast<float>(offset) / referenceN;
+
+        if (m_tfcEnabled) {
+            requiredSize = std::max(requiredSize, tfcWindowSize(m_logBasis[i].frequency));
+        }
+    }
+    setSize(requiredSize);
 
     for (unsigned int i = 0; i < m_logBasis.size(); ++i) {
-        N      = startWindow * pow(wFactor, i);
-        offset = startOffset * pow(wFactor * fFactor, i);
-        frequency =  static_cast<float>(offset) / (N);
+        const unsigned int referenceN = startWindow * pow(wFactor, i);
+        const unsigned int N = m_tfcEnabled
+                ? tfcWindowSize(m_logBasis[i].frequency)
+                : referenceN / m_logWindowDenominator;
 
-        m_logBasis[i].N = N / m_logWindowDenominator;
-        m_logBasis[i].frequency = frequency;
-        m_logBasis[i].w.resize(N);
+        m_logBasis[i].N = N;
+        m_logBasis[i].w.resize(m_tfcEnabled ? N : referenceN);
         float gain(0);
         for (unsigned int j = 0; j < m_logBasis[i].N; ++j) {
             gain += m_window.pointGain(j, m_logBasis[i].N) / m_logBasis[i].N;
@@ -490,7 +549,7 @@ GNU_ALIGN void FourierTransform::prepareLog()
         auto norm = (m_norm == Norm::Sqrt ? m_logBasis[i].N : float(1.f) );
         float phase = (m_align == Align::Center ? -(m_logBasis[i].N / 2.f) : 0);
         for (unsigned int j = 0; j < m_logBasis[i].N; ++j, ++phase) {
-            w.polar(-2.f  * M_PI * phase * frequency);
+            w.polar(-2.f  * M_PI * phase * m_logBasis[i].frequency);
             w *= m_window.pointGain(j, m_logBasis[i].N) / (norm * gain);
             m_logBasis[i].w[j] = _mm_set_ps(w.imag, w.real, w.imag, w.real);
         }

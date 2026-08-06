@@ -1,6 +1,6 @@
 # TFC Window (Time-Frequency-Constant Window) をOSMに実装するための設計プラン
 
-競合製品AFMG SysTuneの特許技術「TFC Window™」([systune-rtd.md](systune-rtd.md)参照)相当の機能を、Open Sound Meterに実装するための技術設計プラン。実装着手前の設計検討として作成したもので、この時点ではコード変更は行っていない。
+競合製品AFMG SysTuneの特許技術「TFC Window™」([systune-rtd.md](systune-rtd.md)参照)相当の機能を、Open Sound Meterに実装するための技術設計プラン。Phase 1の`FourierTransform`層は実装済みで、後続Phaseの設計も含む。
 
 ## 1. 概要
 
@@ -155,6 +155,8 @@ AFMGの公開数値例と一致することを確認済み。
 ### 3.4 既存`setLogWindowDenominator()`(LTW1/2/3)との関係
 
 TFCモードが有効な間は`m_logWindowDenominator`を常に`1`に固定する(TFCの数式で決まった`N`をそのまま使い、見えない倍率をかけない)。`Windowing`ソースのLTW1/2/3は今回のスコープ外とし、変更しない(コード上は`if (m_tfcEnabled) {...} else { N = ... / m_logWindowDenominator; }`という分岐で完全に独立させられるため、既存機能への影響はない)。将来的に`Windowing`側にもTFCプリセットを追加する余地は残すが、本プランのスコープには含めない。
+
+Phase 1の実装では、従来式で整数化した`referenceN`と`offset`の比を周波数グリッドとして先に保存し、TFCの窓長だけをその周波数から逆算している。これにより、TFC無効時の周波数・窓長・`m_logBasis[i].w`の確保サイズは変更前と一致する。TFC有効時はdenominatorを適用せず、実際の窓長と基底ベクトルの確保サイズを一致させる。
 
 ### 3.5 インパルス応答(Deconvolution)は現状維持
 

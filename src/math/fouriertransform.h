@@ -112,11 +112,26 @@ public:
 
     void setLogWindowDenominator(unsigned int newLogWindowDenominator);
 
+    //! enable/disable TFC (Time-Frequency-Constant) window mode
+    void setTfcEnabled(bool enabled);
+    bool tfcEnabled() const;
+
+    //! reference window time in milliseconds
+    void setTfcReferenceTime(float milliseconds);
+    float tfcReferenceTime() const;
+
+    //! reference frequency in Hz
+    void setTfcReferenceFrequency(float hz);
+    float tfcReferenceFrequency() const;
+
 private:
     unsigned int m_size;
     unsigned int m_pointer;
     unsigned int m_sampleRate;
     unsigned int m_logWindowDenominator;
+    bool m_tfcEnabled = false;
+    float m_tfcReferenceTime = 10.f;
+    float m_tfcReferenceFrequency = 1000.f;
 
     Type m_type;
     Norm m_norm = Sqrt;

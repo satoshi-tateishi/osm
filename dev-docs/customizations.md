@@ -33,6 +33,14 @@
 - **dBモードの帯域平均をパワー(エネルギー)平均に変更**: `src/chart/opengl/magnitudeseriesrenderer.cpp`。修正前は各FFTビンのdB値をそのまま算術平均していたが(log領域の平均)、修正後は線形振幅の2乗(パワー)を積算し、`10*log10(積算パワー/count)`でdB化してから帯域代表値とするようにした。`iterateForSpline`テンプレートの`beforeSpline`フックを使い、帯域代表値の生成部分だけを差し替える形で実装(スプライン補間・GPU描画コード・シェーダーは無変更)。Linear/Impedanceモードの平均方法は変更していない。
   - 理由: 聴感・IEC規格のオクターブバンド分析はエネルギー(パワー)平均が標準であり、dB値の算術平均は物理的な積分と異なる(静かな谷がピークを不当に引き下げる)ため。
 
+## TFC Window Phase 1（FourierTransform層）の実装
+
+`src/math/fouriertransform.h` / `.cpp`
+
+- 既存のLog変換に、TFC（Time-Frequency-Constant）窓長計算を有効化するフラグと、基準窓時間（既定10ms）・基準周波数（既定1kHz）の設定APIを追加。
+- 既存の対数周波数グリッドを維持したまま、TFC有効時は`N = round((T_ref / 1000) * f_ref / frequency_normalized)`でビンごとの窓長を決定する。窓長は8サンプル以上、サンプルレートの2秒分以下に制限し、必要に応じて入力リングバッファを動的に拡張する。
+- TFC無効時は従来のLTW1/2/3の窓長、周波数、基底ベクトル確保サイズを維持し、後方互換性を確保している。`Measurement`層やQML UIからTFCを選択する配線はPhase 2以降で行う。
+
 ## Measurementソースの既定値変更(全チャート共通)
 
 `src/meta/metameasurement.cpp`(`Measurement`コンストラクタ)

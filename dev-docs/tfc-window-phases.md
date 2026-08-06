@@ -2,13 +2,13 @@
 
 [tfc-window-implementation-plan.md](tfc-window-implementation-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-この時点ではドキュメント化のみで、コード実装はまだ着手していない。
+Phase 1のコア計算ロジックまで実装済み。後続Phaseは未着手。
 
 ## 進捗状況
 
 | Phase | 内容 | 状態 |
 |---|---|---|
-| Phase 1 | `FourierTransform`層の拡張(コア計算ロジック) | 未着手 |
+| Phase 1 | `FourierTransform`層の拡張(コア計算ロジック) | 完了 |
 | Phase 2 | `Measurement`/`Meta::Measurement`層の配線 | 未着手 |
 | Phase 3 | ドキュメント更新(インパルス応答側の非対称性の明文化) | 未着手 |
 | Phase 4 | QML UI実装 | 未着手 |
@@ -25,12 +25,12 @@
 **対象ファイル**: `src/math/fouriertransform.h`、`src/math/fouriertransform.cpp`
 
 **タスク**:
-- [ ] `m_tfcEnabled` / `m_tfcReferenceTime` / `m_tfcReferenceFrequency`メンバ追加
-- [ ] `setTfcEnabled(bool)` / `setTfcReferenceTime(float ms)` / `setTfcReferenceFrequency(float hz)`のsetter追加(getterも必要に応じて)
-- [ ] `prepareLog()`の計算順序変更: `frequency_i`(対数グリッド)を先に計算し、その後で窓長`N_i`を決定する形に入れ替える([tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.1節)
-- [ ] TFC有効時の`N_i`算出式実装: `C = (T_ref[ms]/1000) * f_ref[Hz]`、`N_i = round(C / frequency_i)`(同3.2節)。無効時は既存の`N = startWindow * pow(wFactor, i) / m_logWindowDenominator`のまま
-- [ ] バッファサイズの動的計算: 全ビンの`frequency_i`から最低周波数ビンの`N_max`を求め、`setSize(std::max(startWindow, N_max))`(同3.3節)
-- [ ] 上限クランプ(例: 2秒相当)・下限クランプ(例: 8サンプル)の実装
+- [x] `m_tfcEnabled` / `m_tfcReferenceTime` / `m_tfcReferenceFrequency`メンバ追加
+- [x] `setTfcEnabled(bool)` / `setTfcReferenceTime(float ms)` / `setTfcReferenceFrequency(float hz)`のsetter・getter追加
+- [x] `prepareLog()`の計算順序変更: `frequency_i`(対数グリッド)を先に計算し、その後で窓長`N_i`を決定する形に入れ替える([tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.1節)
+- [x] TFC有効時の`N_i`算出式実装: `C = (T_ref[ms]/1000) * f_ref[Hz]`、`N_i = round(C / frequency_i)`(同3.2節)。無効時は既存の`N = startWindow * pow(wFactor, i) / m_logWindowDenominator`のまま
+- [x] バッファサイズの動的計算: 全ビンの`frequency_i`から`N_max`を求め、`setSize(std::max(startWindow, N_max))`(同3.3節)
+- [x] 上限クランプ(2秒相当)・下限クランプ(8サンプル)の実装
 
 **完了条件・検証方法**:
 - reference time/frequencyを変えて`m_logBasis[i].N`をログ出力し、[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.2節の検算例(`T_ref=10ms@1kHz`で8kHz→1.25ms、125Hz→80ms)と一致することを確認
