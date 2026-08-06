@@ -47,3 +47,7 @@ Open Sound Meter (OpenSoundMeter) — Qt 5.15 / C++17製のクロスプラット
 ## 機能の修正・変更時の記録について
 
 アプリの挙動・機能を修正/変更したときは、必ず[dev-docs/customizations.md](dev-docs/customizations.md)に変更内容と理由を追記すること(何を・なぜ変更したかが分かるように)。測定タイプの設定項目など仕様そのものを調査した場合は[dev-docs/measurement-types.md](dev-docs/measurement-types.md)側を更新する。コードのコメントだけに頼らず、`dev-docs/`にまとまった記録を残すことで、本家との差分把握や将来の変更理由の追跡をしやすくする。
+
+## コミット・pushについて
+
+このプロジェクトは個人開発のため、コミットとpushは連動して構わない(pushの都度、都度の承認確認は不要)。ユーザーから明示的に「コミットして」「pushして」と指示された場合は、通常のgit安全プロトコル(force push等の破壊的操作の回避、コミットメッセージの作法など)に従いつつ、コミット後に続けてpushしてよい。
