@@ -43,8 +43,16 @@
 
 **バグ修正(既定値変更に伴い顕在化)**: `src/source/measurement.cpp`のコンストラクタで、`setAverage(...)`(起動時の設定復元)が`averageChanged`シグナルと`updateAverage()`(FIFOバッファの深さを実際に反映する処理)の`connect()`より先に実行されていたため、起動直後は「表示上はFIFO:12だが実際のバッファ深さは`Averaging`クラスの初期値である1のまま」という不具合があった。本家からある潜在バグだが、以前は`average`の既定値が`1`(かつ`averageType`既定値が`LPF`)だったため偶然表面化していなかった。`average`の既定値を`12`に変更したことで顕在化(スピンボックスをナッジすると`setAverage()`が再度呼ばれ`averageChanged`が発火し正しく反映されるため、症状が「操作すると直る」ように見えていた)。コンストラクタ内で`updateAverage()`を明示的に呼び出すよう修正して解消。
   - 注意: この修正はOpenGLバックエンドのみに適用。Metalバックエンド(`src/chart/metal/magnitudeseriesnode.mm`)は同様の修正をしておらず未検証(このビルドはOPENGLバックエンドのみコンパイルしているため)。
+
+**バグ修正(既定値変更に伴い顕在化)**: Transform modeを`LTW`(`Mode::LFT`)にするとPhaseチャートが表示されなくなる不具合があった。原因は`src/math/averaging.cpp`の`Averaging<Complex>`(`checkDepth`/`append`)に、`Averaging<float>`側にはあるNaNガード(`!std::isnan(value)`)が無かったこと。LTWは解析ウィンドウが最大65536サンプル(≈1.37秒@48kHz)と長く、測定開始直後や`resetAverage()`直後にウィンドウが全ゼロのまま`Complex::polar()`(`src/math/complex.cpp`)が呼ばれると`0/0`除算でNaNが発生しうる。本フォークで`average type`の既定値を`LPF`→`FIFO`に変更した(前述)ことで、以前はNaN耐性のある`Filter::BesselLPF`(NaN入力時は直前値を保持)が吸収していたNaNが、ガードの無い`Averaging<Complex>`にそのまま加算されるようになり、IEEE754の仕様上その後どれだけ正常値が来ても平均値が恒久的にNaNのまま壊れ続けていた。`Averaging<Complex>::checkDepth`/`append`に`Averaging<float>`と同様の`!std::isnan(value.real) && !std::isnan(value.imag)`ガードを追加して解消。
 - **"ppo"を"smoothing"に、表示を"1/N oct"形式に変更**: `TitledCombo`の`title`/`tooltip`を`"ppo"`/`"points per octave"`から空文字/`"smoothing"`に変更。`model`を生の数値配列(`[1,3,6,12,24,48]`)から表示用文字列配列(`["1/1 oct","1/3 oct",...,"1/48 oct"]`)に変更し、実際のppo値は`ppoValues`という別プロパティで対応付け。Smaartの"1/3 oct"等の表記に合わせた。
 - **smoothingのデフォルトを"1/6 oct"に変更**: `MagnitudePlot`コンストラクタで`m_pointsPerOctave = 6;`を追加(基底クラス`FrequencyBasedPlot`の既定値`12`を上書き)。
+
+## Phase測定のカスタマイズ
+
+`qml/Plot/PhaseProperties.qml`
+
+- **"ppo"を"smoothing"に、表示を"1/N oct"形式に変更**: Magnitudeと同様の対応(`TitledCombo`の`title`/`tooltip`を`"ppo"`/`"points per octave"`から空文字/`"smoothing"`に変更し、`model`を`["1/1 oct","1/3 oct",...,"1/48 oct"]`の表示用文字列配列に、実際のppo値は`ppoValues`プロパティで対応付け)。Phase・Magnitudeで見た目(表記・レイアウト幅)を統一するための対応。デフォルト値(`FrequencyBasedPlot`基底クラスの`12`)は変更していない。
 
 ## Spectrum(RTA)測定のカスタマイズ
 

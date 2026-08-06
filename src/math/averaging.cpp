@@ -21,16 +21,29 @@
 template <> void Averaging<Complex>::checkDepth(unsigned int i)
 {
     while (m_data.pat(i)->size() > m_depth) {
-        m_value[i] -= m_data.pat(i)->front();
+        Complex value = m_data.pat(i)->front();
+#ifdef WIN64
+        if (value.real / 0.f != value.real && value.imag / 0.f != value.imag) {
+#else
+        if (!std::isnan(value.real) && !std::isnan(value.imag)) {
+#endif
+            m_value[i] -= value;
+            m_collected[i]--;
+        }
         m_data.pat(i)->pop();
-        m_collected[i]--;
     }
 };
 template<> void Averaging<Complex>::append(unsigned int i, const Complex &value)
 {
     m_data.pat(i)->push(value);
-    m_value[i] += value;
-    m_collected[i]++;
+#ifdef WIN64
+    if (value.real / 0.f != value.real && value.imag / 0.f != value.imag) {
+#else
+    if (!std::isnan(value.real) && !std::isnan(value.imag)) {
+#endif
+        m_value[i] += value;
+        m_collected[i]++;
+    }
     checkDepth(i);
 };
 template <> Complex Averaging<Complex>::value(unsigned int i)

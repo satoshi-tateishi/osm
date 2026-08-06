@@ -26,6 +26,17 @@ Open Sound Meter (OpenSoundMeter) — Qt 5.15 / C++17製のクロスプラット
 - ネイティブarm64バイナリが必要な場合: フルXcode.app(App Store)をインストールした上で`brew install qt@5`(ソースビルド、数時間規模)してから同様にqmake/makeする。Homebrewは実行環境(arm64)向けにネイティブビルドするため、この経路でのみarm64ネイティブになる。
 - `.pro`内の`GRAPH_BACKEND`環境変数で描画バックエンドを切替可能(デフォルト`OPENGL`、`METAL`指定でMetal使用・フルXcode推奨)。
 
+### 機能修正後の動作確認手順
+
+機能修正・バグ修正のあとにアプリを起動して動作確認する際は、必ず以下の順序で行うこと:
+
+1. `OpenSoundMeter.app`が起動中であれば終了する
+2. ビルドする(上記のシャドウビルド手順)
+3. `open build/OpenSoundMeter.app`で起動する
+4. ユーザーに確認してもらう
+
+起動中のまま`make`だけ実行すると、ソースに差分がない場合は`make`が何もせず終わる(`Nothing to be done`)ため、「起動中だから反映されなかった」と誤解しやすい。実際は単にビルド対象がなかっただけだが、確認しているものが確実に最新ビルドであると保証するため、この順序を徹底する。
+
 ## このフォークでの変更点(本家との差分)
 
 このフォークは開発に不要なファイルを整理済み。本家に追従する際はこの差分を意識すること。詳細な一覧・変更理由は[dev-docs/customizations.md](dev-docs/customizations.md)を参照。
