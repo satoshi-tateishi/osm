@@ -6,3 +6,6 @@
 
 - [customizations.md](customizations.md) — 本家からのカスタマイズ内容一覧(変更理由・対応コミット)
 - [measurement-types.md](measurement-types.md) — 各測定タイプ(Spectrum/Magnitudeほか)の設定項目リファレンス
+- [systune-rtd.md](systune-rtd.md) — 競合製品SysTuneの特許技術「Real-Time Deconvolution (RTD™)」調査メモ
+- [tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) — TFC Window(周波数依存窓関数)をOSMに実装するための設計プラン
+- [tfc-window-phases.md](tfc-window-phases.md) — TFC Window実装をPhase分割した進捗管理用ドキュメント
