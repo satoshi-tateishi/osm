@@ -39,6 +39,10 @@ Thumbs.db
 # qtcreator generated files
 *.pro.user*
 
+# Claude Code
+.claude/
+.playwright-mcp/
+
 # xemacs temporary files
 *.flc
 
