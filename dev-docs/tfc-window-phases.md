@@ -2,7 +2,7 @@
 
 [tfc-window-implementation-plan.md](tfc-window-implementation-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-Phase 2のMeasurement/Meta層まで実装済み。後続Phaseは未着手。
+Phase 3のドキュメント更新まで完了済み。Phase 4以降は未着手。
 
 ## 進捗状況
 
@@ -10,7 +10,7 @@ Phase 2のMeasurement/Meta層まで実装済み。後続Phaseは未着手。
 |---|---|---|
 | Phase 1 | `FourierTransform`層の拡張(コア計算ロジック) | 完了 |
 | Phase 2 | `Measurement`/`Meta::Measurement`層の配線 | 完了 |
-| Phase 3 | ドキュメント更新(インパルス応答側の非対称性の明文化) | 未着手 |
+| Phase 3 | ドキュメント更新(インパルス応答側の非対称性の明文化) | 完了 |
 | Phase 4 | QML UI実装 | 未着手 |
 | Phase 5 | 結合・負荷検証 | 未着手 |
 
@@ -74,8 +74,8 @@ Phase 2のMeasurement/Meta層まで実装済み。後続Phaseは未着手。
 **対象ファイル**: `dev-docs/measurement-types.md`
 
 **タスク**:
-- [ ] LTWモードの説明(「対数軸の変換、内部的に4096点相当」)を、Magnitude側とインパルス応答側で非対称であることが分かる表現に修正
-- [ ] TFCモードの説明を追加し、インパルス応答/Stepチャートは引き続き固定長(4096点)Fast FFTのままであることを明記([tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.5節を要約)
+- [x] LTWモードの説明(「対数軸の変換、内部的に4096点相当」)を、Magnitude側とインパルス応答側で非対称であることが分かる表現に修正
+- [x] TFCモードの説明を追加し、インパルス応答/Stepチャートは引き続き固定長(4096点)Fast FFTのままであることを明記([tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.5節を要約)
 
 **完了条件・検証方法**: 記述がPhase 1・Phase 2で実装した実際の挙動と一致していること
 

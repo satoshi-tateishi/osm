@@ -31,7 +31,7 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 
 | 項目 | UI | 意味 |
 |---|---|---|
-| Transform mode | `10`〜`16` / `LTW` | FFTサイズを`2^N`サンプルで指定(`10`=1024〜`16`=65536)。値が大きいほど周波数分解能は上がるが時間分解能・応答速度は下がる。`LTW`(`Meta::Measurement::Mode::LFT`)はFFTではなく対数軸の変換(`FourierTransform::Log`、内部的に4096点相当)を使い、低域の分解能を保ちつつ応答を速くする特殊モード |
+| Transform mode | `10`〜`16` / `LTW` / `TFC` | FFTサイズを`2^N`サンプルで指定(`10`=1024〜`16`=65536)。値が大きいほど周波数分解能は上がるが時間分解能・応答速度は下がる。`LTW`(`Meta::Measurement::Mode::LFT`)はMagnitude/Phase/Coherence等の周波数領域計算に対数周波数グリッドの`FourierTransform::Log`を使い、各ビンの窓長を固定係数`wFactor`/`fFactor`による独自のハイブリッド則(厳密なConstant-Q/TFCではない)で変化させる。`TFC`(Time-Frequency-Constant Window)も同じ`FourierTransform::Log`を使うが、基準周波数`f_ref`での基準窓時間`T_ref`から`T(f) = T_ref * (f_ref/f)`とし、`T(f)*f`が一定になる厳密な反比例則で窓長を決めるAFMG SysTuneの「TFC Window™」相当の機能。`TFC`はPhase 2で共通のモード一覧に追加されたため既存のTransform modeドロップダウンから選択できる。ただし基準窓時間と基準周波数の調整UIはまだなく、選択中は現在のプロパティ値(既定値10ms @ 1kHz、またはプロジェクトから復元した値)で動作する。調整UIはPhase 4で追加予定。LTW/TFCともImpulse/Stepの計算には適用されない(第4節参照) |
 | window function | Rectangular / Hann / Hamming / FlatTop / BlackmanHarris / HFT223D / Exponential | FFT窓関数。`WindowFunction::Type`(`src/math/windowfunction.h`)。Hannが既定値 |
 | apply filter on M入力 (inputFilter) | Z / A / C / Notch / BPF 100 / LPF 200 | 測定(M)チャンネルの信号に適用する重み付け/フィルタ。`Z`は無補正(フラット) |
 | M: / R: (dataChanel / referenceChanel) | チャンネル番号 | 測定用(M)・基準用(R)として使うオーディオ入力チャンネル |
@@ -93,7 +93,7 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 
 - **Phase**(位相): 伝達関数の位相特性(度)。`rotate`(-360°〜360°、位相基準点の回転)、`range`(表示する角度レンジ)、`±180º / 0..360º`表示切替、smoothing(Global対応)、coherenceによるアルファ表示に対応。
 
-- **Impulse**(インパルス応答): 測定/基準の相互相関(デコンボリューション)から求めた時間領域のインパルス応答。X軸はms。Y軸モードは`Linear`/`Log`、`normalize`で振幅を正規化表示。時間軸のウィンドウ処理やディレイ確認、後述のStepの元データになる。
+- **Impulse**(インパルス応答): Transform modeが`LTW`/`TFC`でも、Impulseとそれを元にするStepの計算は常に固定長4096点(`FFT12`)のFast FFTを使い、`FourierTransform::Log`のビンごとの可変長窓は適用されない。可変の時間分解能を持つ各ビンから単一時間軸の実数応答への逆変換は数学的に非自明で、TFCの主眼もMagnitude/Phase/Coherenceにあるため、既存LTWと同じ非対称な構成を維持している。インパルス応答自体は測定/基準の相互相関(デコンボリューション)から求める。X軸はms。Y軸モードは`Linear`/`Log`、`normalize`で振幅を正規化表示。時間軸のウィンドウ処理やディレイ確認、後述のStepの元データになる。
 
 - **Step**(ステップ応答): インパルス応答の積分(累積)。立ち上がり特性やスピーカーの過渡応答・極性確認に使う。`integration zero point`(ms)で積分の基準時刻を指定。
 

@@ -1,77 +1,121 @@
-# 実装プロンプト: TFC Window — Phase 3 (ドキュメント更新: インパルス応答側の非対称性の明文化)
+# 実装プロンプト: TFC Window — Phase 4 (QML UI実装)
 
-このファイルは、[tfc-window-phases.md](tfc-window-phases.md)のPhase 3を実装するための、そのまま実行に使えるプロンプト。新しいセッションでこのプロンプトを渡せば、以降のタスクに着手できるよう、必要な背景情報を全てこのファイル内に含めている。
+このファイルは、[tfc-window-phases.md](tfc-window-phases.md)のPhase 4を実装するための、そのまま実行に使えるプロンプト。新しいセッションでこのプロンプトを渡せば、以降のタスクに着手できるよう、必要な背景情報を全てこのファイル内に含めている。
 
-## 前提: Phase 1・Phase 2は完了・レビュー済み
+## 前提: Phase 1〜3は完了・レビュー済み
 
-- Phase 1(`src/math/fouriertransform.h`/`.cpp`): `FourierTransform`にTFC(Time-Frequency-Constant Window)の窓長計算ロジックを実装済み。
-- Phase 2(`src/meta/metameasurement.h`/`.cpp`、`src/source/measurement.h`/`.cpp`、`src/remote/items/measurementitem.h`): `Meta::Measurement::Mode`に`TFC`を追加し、`Measurement::updateFftPower()`から`FourierTransform`のTFC機能を呼び出せる状態(C++レベルでは完全に配線済み)。`tfcReferenceTime`/`tfcReferenceFrequency`のQ_PROPERTYもあり、プロジェクトJSONへの保存・復元・`clone()`にも対応済み。
+- Phase 1(`src/math/fouriertransform.h`/`.cpp`): TFCの窓長計算ロジック実装済み。
+- Phase 2(`src/meta/metameasurement.h`/`.cpp`、`src/source/measurement.h`/`.cpp`、`src/remote/items/measurementitem.h`): `Meta::Measurement::Mode`に`TFC`追加、`tfcReferenceTime`/`tfcReferenceFrequency`のQ_PROPERTY・JSON永続化・`clone()`対応まで配線済み。
+- Phase 3(`dev-docs/measurement-types.md`): ドキュメント更新のみ。
 
-**ただし、QML UI(`qml/source/MeasurementProperties.qml`)のTransform modeドロップダウンにはまだ"TFC"の選択肢が出てこない(Phase 4で追加予定)。** つまり現時点では、TFCは「エンジンとしては完全に動くが、通常の操作ではまだ選択できない」状態。このPhaseで書くドキュメントは、この状態を正確に反映すること(UIから使えるかのように書かない。かといって存在しないかのように省略もしない)。
+**重要な前提**: `Measurement`クラスの`modes`プロパティ(`Q_PROPERTY(QVariant modes READ getAvailableModes CONSTANT)`)はオーバーライドされておらず、基底クラス`Meta::Measurement::getAvailableModes()`(`m_modeMap`を単純に走査するだけ)をそのまま使っている。そのため**Phase 2の時点で、QMLに一切手を入れていなくても、`qml/source/MeasurementProperties.qml`のTransform modeドロップダウン(`modeSelect`)には既に"TFC"が選択肢として現れ、選択できる**(実機で確認済み)。つまりPhase 4のゴールは「TFCを選択可能にすること」ではなく、**選択中にreference time/frequencyを調整するUIを追加すること**、および**選択時の表示(displayText)を適切にすること**の2点。
 
-## 今回のタスク: **コード変更は一切行わない**、ドキュメントのみの更新
+## 背景
 
-**対象ファイル**: `dev-docs/measurement-types.md`
+Open Sound Meter (OSM) に、AFMG SysTuneの「TFC Window™」相当の機能を実装するプロジェクトの一部。設計の全体像は以下を参照。
 
-このファイルはOSMの測定タイプ・設定項目をUIの構成に沿って説明するリファレンスドキュメントで、Phase 1着手前に書かれたもの。TFC実装によって生じた実態との差分を埋めるのが目的。
+- [tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) — 設計方針(特に3.6節がUI設計)
+- [tfc-window-phases.md](tfc-window-phases.md) — Phase分割の全体像
 
-## 現状の記述(該当箇所、確認済み)
+**今回のタスクはPhase 4のみ。`src/`以下のC++コードには一切手を入れないこと**(Phase 1〜2で完結済み)。
 
-### 1節の表内、Transform modeの行(34行目)
+## 対象ファイル
 
+- `qml/source/MeasurementProperties.qml`
+
+## 現状のコード(変更前、確認済み)
+
+### Transform modeドロップダウン(307-316行目)
+
+```qml
+DropDown {
+    id: modeSelect
+    model: dataObjectData.modes
+    currentIndex: dataObjectData.mode
+    displayText: (dataObjectData.mode === Measurement.LFT ? "LTW" : (modeSelect.width > 120 ? "Power:" : "") + currentText)
+    ToolTip.visible: hovered
+    ToolTip.text: qsTr("Transfrom mode")
+    onCurrentIndexChanged: dataObjectData.mode = currentIndex;
+    Layout.preferredWidth: elementWidth
+}
 ```
-| Transform mode | `10`〜`16` / `LTW` | FFTサイズを`2^N`サンプルで指定(`10`=1024〜`16`=65536)。値が大きいほど周波数分解能は上がるが時間分解能・応答速度は下がる。`LTW`(`Meta::Measurement::Mode::LFT`)はFFTではなく対数軸の変換(`FourierTransform::Log`、内部的に4096点相当)を使い、低域の分解能を保ちつつ応答を速くする特殊モード |
+
+`model`(=`dataObjectData.modes`)には既に`"10"`〜`"16"`・`"LTW"`・`"TFC"`が全て含まれている。`currentText`は選択中の生の文字列なので、TFCを選んだ場合`currentText`は`"TFC"`になる。しかし`displayText`の分岐は`LFT`(LTW)専用で、それ以外は全て`"Power:" + currentText`という「FFTサイズ系のモードである」ことを前提にした接頭辞が付く。TFCを選ぶと`"Power:TFC"`という誤解を招く表示になってしまう(実機で確認済み)。
+
+直後に`windowSelect`(318-334行目、`visible: false`で常時非表示、このフォークのHann固定方針)が続く。
+
+### 参考パターン1: `wideSpinBox`(`qml/source/WindowingProperties.qml` 49-71行目)
+
+外部変更の再同期(`Connections`)・初期値反映(`Component.onCompleted`)・モード依存の表示切替(`visible:`)を組み合わせたFloatSpinBoxの標準パターン:
+
+```qml
+FloatSpinBox {
+    id: wideSpinBox
+    from: 0.1
+    to: 10000
+    units: "ms"
+    value: dataObjectData.wide
+    property bool completed: false
+    onValueChanged: {if (completed) { dataObjectData.wide = value; } }
+    tooltiptext: qsTr("Wide of Tukey window, ms")
+    visible: dataObjectData.domain === 0
+    Connections {
+        target: dataObjectData
+        function onWideChanged() { wideSpinBox.value = dataObjectData.wide; }
+    }
+    Component.onCompleted: { completed = true; wideSpinBox.value = dataObjectData.wide; }
+}
 ```
 
-「内部的に4096点相当」という表現が、**Magnitude/Phase/Coherence等の周波数領域の計算(実際には`FourierTransform::Log`のビンごと可変長窓、`ppo=24 × octaves=11`=264ビン、最大窓長は65536サンプル起点)と、インパルス応答/Stepチャート(常に固定4096点=`FFT12`のFast FFT)とで、全く別の変換が使われているという非対称性**を正確に反映していない(あたかも両方とも4096点相当であるかのように読める)。これは[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 2.3節・3.5節で調査済みの既存の仕様(TFC実装以前からLTWモードに存在する非対称性)。
+`completed`ガードが必要な理由(`FloatSpinBox.qml`のコメントに明記): コンポーネント初期化中に`from`/`to`の範囲制約を適用する過程で`value`が変化するイベントが飛ぶため、初期化完了前にその変化を`dataObjectData`へ書き戻さないようにする。
 
-### 4節、Impulse/Stepの説明(96行目・98行目)
+### 参考パターン2: 同ファイル内、`averageType`依存の条件表示(`MeasurementProperties.qml` 53-93行目)
 
-```
-- **Impulse**(インパルス応答): 測定/基準の相互相関(デコンボリューション)から求めた時間領域のインパルス応答。X軸はms。Y軸モードは`Linear`/`Log`、`normalize`で振幅を正規化表示。時間軸のウィンドウ処理やディレイ確認、後述のStepの元データになる。
-
-- **Step**(ステップ応答): インパルス応答の積分(累積)。立ち上がり特性やスピーカーの過渡応答・極性確認に使う。`integration zero point`(ms)で積分の基準時刻を指定。
-```
-
-現状、LTW/TFCモードでもインパルス応答が別の変換を使っていることには一切触れていない。
+`MeasurementProperties.qml`自身にも、`dataObjectData.averageType`の値に応じて`elementWidth`幅のアイテム(`SelectableSpinBox`や`DropDown`)を出し分けている既存パターンがある(53-88行目)。TFC用の2つのFloatSpinBoxをどのRowLayout・どの位置に置くかは、この既存パターンとレイアウト崩れの有無を見ながら判断すること(下記「レイアウト上の注意」参照)。
 
 ## 実装する変更
 
-### 1. Transform modeの行(34行目)を修正
+### 1. `modeSelect`の`displayText`にTFC分岐を追加
 
-「内部的に4096点相当」という表現をやめ、**Magnitude/Phase/Coherence側とインパルス応答側で使う変換が異なる**ことが一読して分かるように書き換える。あわせて`TFC`モードの説明も同じ行(または表の直後に注記として)追加する。
+`Measurement.LFT`のときの`"LTW"`と同様に、`Measurement.TFC`のときは`"Power:"`接頭辞を付けずそのまま`"TFC"`と表示する分岐を追加する(例: 三項演算子をLFT/TFC/それ以外の3分岐にする、またはif式に書き換える。書き方はドラフトのコピーでなく実装者の判断でよい)。
 
-含めるべき内容(文面はそのままコピーせず、既存の文体・粒度に合わせて自然に書くこと):
+### 2. reference time / reference frequency用のFloatSpinBoxを2つ追加
 
-- `LTW`: Magnitude/Phase/Coherence等の周波数領域計算では`FourierTransform::Log`(対数周波数グリッド、ビンごとに異なる窓長)を使う。窓長は`wFactor`/`fFactor`という固定係数で決まる、独自のハイブリッド則(厳密なConstant-QでもTFCでもない)。
-- `TFC`(Time-Frequency-Constant Window): `LTW`と同じ`FourierTransform::Log`の仕組みを使うが、窓長の決定式だけが異なる。基準周波数`f_ref`における基準窓時間`T_ref`を指定すると、任意の周波数`f`の窓長が`T(f) = T_ref * (f_ref/f)`(`T(f)*f`が一定)という物理的に厳密な反比例関係で決まる、AFMG SysTuneの"TFC Window™"相当の機能。**現時点ではUIのTransform modeドロップダウンからは選択できない**(エンジン側の実装は完了しているが、UI配線はPhase 4で追加予定)。
-- どちらのモードも、**インパルス応答/Stepチャートは対象外**であること(次項に誘導)。
+`modeSelect`の直後(`windowSelect`の前後、または上記「参考パターン2」に倣ってレイアウトが崩れない位置)に追加する。
 
-### 2. Impulse/Stepの説明(96行目・98行目)に非対称性を明記
+- **reference time**: `dataObjectData.tfcReferenceTime`にバインド、単位`"ms"`。
+- **reference frequency**: `dataObjectData.tfcReferenceFrequency`にバインド、単位`"Hz"`。
+- どちらも`wideSpinBox`と同じパターン(`completed`ガード付き`onValueChanged`、`Connections`での`onTfcReferenceTimeChanged`/`onTfcReferenceFrequencyChanged`購読、`Component.onCompleted`での初期値反映)を使うこと。**この`Connections`が無いと、プロジェクトファイル読み込み直後やソースの複製(`clone()`)直後に、C++側の実際の値とスピンボックスの表示値がずれる**(`tfcReferenceTime`/`tfcReferenceFrequency`はJSON復元・`clone()`両方に対応済みなので、UIが追従しないとその努力が無駄になる)。
+- `visible: dataObjectData.mode === Measurement.TFC`を両方に設定する。
+- `from`/`to`の値は、[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.3節の「上限クランプ(2秒相当)・下限クランプ(8サンプル)」を踏まえ、実用上意味のある範囲に設定すること(例: reference timeは1ms〜200ms程度、reference frequencyは20Hz〜20000Hz程度)。**実際のクランプはFourierTransform側で常に効くため、ここでのfrom/toは主にUI操作性のためのガイドであり、この範囲を外れたら壊れるという意味ではない**。具体的な数値は実装者が判断してよいが、[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.2節の検算例(`T_ref=10ms@1kHz`)が範囲内に収まることは確認すること。
 
-Impulseの説明冒頭あたりに、「Transform modeが`LTW`/`TFC`のいずれであっても、インパルス応答/Stepチャートの計算自体は常に固定長(4096点、`FFT12`)のFast FFTを使う(`FourierTransform::Log`の可変長窓の恩恵を受けない)」という趣旨の一文を追加する。
+### 3. `windowSelect`は変更しない
 
-背景説明として、[tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) 3.5節の理由(以下要約、必要なら参照する形でもよい)を踏まえるとよい:
+タスク一覧には含まれるが、既存通り`visible: false`のまま据え置く(このフォークはHann窓固定方針、[customizations.md](customizations.md)参照)。TFCモードでも窓関数選択は不要。
 
-1. TFCの主眼はMagnitude/Phase/Coherence表示にあり、インパルス応答は別のFFTサイズで見るのが一般的な使い方
-2. ビンごとに時間分解能が異なる変換結果から単一の時間軸を持つ実数インパルス応答へ逆変換するのは数学的に非自明(既存`Deconvolution`の「複素除算→単一逆FFT」という単純な構造を再利用できない)
-3. 既存のLTW/Logモードで既にこの非対称性を受け入れて運用されている実績がある
+## レイアウト上の注意
 
-## 完了条件・検証方法
+`MeasurementProperties.qml`の2つ目の`RowLayout`(304行目〜)は、`modeSelect`・`windowSelect`(非表示)・`inputFilterSelect`・`measurementChannel`・`referenceChannel`・`deviceSelect`(`Layout.fillWidth: true`)・`Store`ボタンが既に並んでいる。ここに`elementWidth`幅のFloatSpinBoxを2つ追加すると、狭いウィンドウ幅で他の要素(特に`deviceSelect`)が窮屈になる可能性がある。実機でウィンドウ幅を変えながら崩れがないか確認すること(下記検証方法参照)。
 
-[tfc-window-phases.md](tfc-window-phases.md) Phase 3の完了条件: 「記述がPhase 1・Phase 2で実装した実際の挙動と一致していること」。具体的には以下を満たすこと。
+## 検証方法
 
-- `measurement-types.md`を読んだだけで、「Magnitude/Phase/Coherence側の分解能はLTW/TFCで変わるが、インパルス応答/Stepは変わらない(常に4096点)」という非対称性が誤解なく伝わること。
-- TFCモードの説明が、現時点でUIから選択できない(Phase 4待ち)ことを含めて実態と食い違っていないこと。
-- コード(`src/`以下)への変更が一切ないこと(`git diff --stat`で`dev-docs/`以外に差分が出ないこと)。
+1. CLAUDE.mdの手順(アプリ終了→ビルド→起動→ユーザー確認)でビルド・起動する。
+2. Measurementソースの設定行で、Transform modeを`TFC`に切り替える。表示が`"Power:TFC"`ではなく`"TFC"`になること、reference time/frequencyのスピンボックスが表示されることを確認する。
+3. 他のモード(`10`〜`16`、`LTW`)に切り替えると、2つのスピンボックスが非表示になることを確認する。
+4. reference time/frequencyの値をスピンボックスで変更し、Magnitude/Phase/Coherenceチャートの見た目(低域・高域の分解能)が実際に変化することを確認する(Phase 2で実装した「モード不変でもパラメータ変更を検知してprepareLog()を再実行する」経路が正しく動いていることの実質的な確認)。
+5. スピンボックスの+/-ボタンを連打・キー長押しした際にUIがフリーズしないこと(`updateFftPower()`の再計算はタイマースレッド上で80ms周期に間引かれるため、通常は問題ないはずだが、実機で確認すること)。
+6. プロジェクトファイルを保存→読み込みし直し、起動直後にスピンボックスの表示値が実際の設定値(JSON復元後の値)と一致していること(`Connections`/`Component.onCompleted`の疎通確認)。同様に、既存のMeasurementソースを複製(`Store`とは別の複製機能があれば、それ)した際も値が引き継がれていることを確認する。
+7. ウィンドウ幅を変えて、Transform modeの行のレイアウトが崩れないこと(上記「レイアウト上の注意」)を確認する。
+8. 既存のFast FFT(`10`〜`16`)・`LTW`モードの操作性に変化がないことを確認する(回帰なし)。
 
 ## やらないこと(スコープ外)
 
-- `src/`以下のコード変更(今回はドキュメントのみ)
-- QML UIの変更(Phase 4)
-- `Measurement`/`FourierTransform`層への追加変更(Phase 1・2で完了済み)
+- `src/`以下のC++コード変更(Phase 1・2で完結済み)
+- `dev-docs/measurement-types.md`の変更(Phase 3で完結済み。ただしPhase 4でUIの見た目が確定した結果、Phase 3の記述(「調整UIはPhase 4で追加予定」)が古くなるので、完了後の作業として更新すること)
+- `Filter`/`Equalizer`/`StandardLine`側のUI(これらはPhase 2で自分のモード一覧からTFCを除外済みで、そもそもTFCを選べないため対象外)
 
 ## 完了後の作業
 
-- [tfc-window-phases.md](tfc-window-phases.md)の進捗状況テーブルで、Phase 3を「完了」に更新する。
-- [dev-docs/customizations.md](dev-docs/customizations.md)への追記は必須ではない(今回はドキュメントの修正のみで、アプリの挙動変更ではないため)が、記述内容に実装解釈上の補足を加えた場合はそちらにも一言残すと親切。
+- [tfc-window-phases.md](tfc-window-phases.md)の進捗状況テーブルで、Phase 4を「完了」に更新する。
+- [dev-docs/customizations.md](dev-docs/customizations.md)に変更内容と理由を追記する。
+- [dev-docs/measurement-types.md](dev-docs/measurement-types.md) 34行目(Transform modeの行)の「調整UIはまだなく」「Phase 4で追加予定」という記述を、実装後の実態(reference time/frequencyのスピンボックスが使えるようになったこと)に合わせて更新する。
