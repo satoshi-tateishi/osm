@@ -113,7 +113,7 @@ FloatSpinBox {
 }
 ```
 
-このパターンは、TFCの`reference time`/`reference frequency`スライダーをそのまま踏襲できるテンプレートになっている。
+このパターンは、TFCの`reference time`スピンボックスにそのまま踏襲できるテンプレートになっている。
 
 ### 2.6 チャート描画層は変更不要
 
@@ -129,11 +129,11 @@ FloatSpinBox {
 
 ### 3.2 パラメータ化: reference timeの数式
 
-AFMGの定義: 基準周波数`f_ref`における窓時間`T_ref`を指定すると、任意の周波数`f`における窓時間は`T(f) = T_ref * (f_ref / f)`で決まる。両辺に`f`を掛けると`T(f) * f = T_ref * f_ref = C`(定数、無次元の「サイクル数」)。
+AFMGの定義: 基準周波数`f_ref`における窓時間`T_ref`を指定すると、任意の周波数`f`における窓時間は`T(f) = T_ref * (f_ref / f)`で決まる。両辺に`f`を掛けると`T(f) * f = T_ref * f_ref = C`(定数、無次元の「サイクル数」)。本実装ではSysTuneの調査メモに合わせて`f_ref = 1000Hz`に固定し、ユーザーは`T_ref`のみを調整する。
 
 TFC用の窓長決定式:
 ```
-C   = (T_ref[ms] / 1000) * f_ref[Hz]      // 無次元サイクル数
+C   = (T_ref[ms] / 1000) * 1000[Hz]       // f_refは1kHz固定
 N_i = round(C / frequency_i)               // frequency_iは既存の対数グリッドをそのまま流用
 ```
 
@@ -172,12 +172,12 @@ TFCモードでもインパルス応答/Stepチャートは、現状通り固定
 
 `Meta::Measurement::Mode`に新規`TFC`を追加する(既存`LFT`を流用してサブパラメータとして追加する案も検討したが、「基準周波数でreference timeを指定する」操作感はdenominatorプリセットとは別物であり、ユーザーに明示的に選ばせる方が混乱が少ないため独立モードを採用)。
 
-- `src/meta/metameasurement.h`: `enum Mode {FFT10..FFT16, LFT, TFC};`、`tfcReferenceTime`/`tfcReferenceFrequency`のQ_PROPERTY相当の宣言。
+- `src/meta/metameasurement.h`: `enum Mode {FFT10..FFT16, LFT, TFC};`と`tfcReferenceTime`のQ_PROPERTY相当の宣言。reference frequencyは上位層に公開せず1kHz固定。
 - `src/meta/metameasurement.cpp`: `m_modeMap`に`{Measurement::TFC, "TFC"}`を追加(`m_FFTsizes`には追加しない、`LFT`と同様)。
 - `src/source/measurement.h/.cpp`: `Q_PROPERTY(float tfcReferenceTime ...)` / `Q_PROPERTY(float tfcReferenceFrequency ...)`、`updateFftPower()`に`case Mode::TFC:`を追加(`m_dataFT.setTfcEnabled(true)`、reference time/frequencyをFourierTransformへ伝搬、`case Mode::LFT:`側では`setTfcEnabled(false)`を明示)。`toJSON()`/`fromJSON()`/`clone()`にも対応するプロパティを追加。TFCモード中は最後に適用したreference time/frequencyをタイマースレッド側で保持し、いずれかが変わればモードが同じでも`prepareLog()`を再実行する。周波数グリッドとインパルス応答の設定は変わらないため、このパラメータ変更経路では周波数領域配列の再確保や`m_deconvAvg`のリセットを行わない。
 - `Meta::Measurement`の純粋仮想シグナル追加に合わせ、もう一つの派生クラス`remote::MeasurementItem`にもTFCプロパティと対応シグナルを追加し、リモート同期用オブジェクトを引き続き具象クラスとして生成できるようにする。
 - `Meta::Measurement::getAvailableModes()`を共有するFilter・Equalizer・StandardLineはTFC計算に未対応のため、それぞれのモード一覧からTFCだけを除外する。列挙値ではTFCが末尾に追加されているため、既存モードの表示インデックスとの対応は変わらない。
-- `qml/source/MeasurementProperties.qml`: Transform modeドロップダウンに"TFC"を追加、`WindowingProperties.qml`の`wideSpinBox`パターンを踏襲したFloatSpinBoxを2つ(reference time [ms]、reference frequency [Hz])、`visible: dataObjectData.mode === Measurement.TFC`で条件表示する。`windowSelect`(window function選択)は既存通り非表示のまま(このフォークはHann固定、[customizations.md](customizations.md)参照)。
+- `qml/source/MeasurementProperties.qml`: TFC時だけreference time [ms]のFloatSpinBoxを表示する。reference frequencyはUIに出さず、狭幅で重なる増減インジケータも非表示にする。`windowSelect`は従来通り非表示。
 
 ## 4. 段階的な実装ステップ
 

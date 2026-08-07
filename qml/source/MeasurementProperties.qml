@@ -308,11 +308,46 @@ Item {
                 id: modeSelect
                 model: dataObjectData.modes
                 currentIndex: dataObjectData.mode
-                displayText: (dataObjectData.mode === Measurement.LFT ? "LTW" : (modeSelect.width > 120 ? "Power:" : "") + currentText)
+                displayText: (dataObjectData.mode === Measurement.LFT ? "LTW" :
+                              dataObjectData.mode === Measurement.TFC ? "TFC" :
+                              (modeSelect.width > 120 ? "Power:" : "") + currentText)
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Transfrom mode")
                 onCurrentIndexChanged: dataObjectData.mode = currentIndex;
                 Layout.preferredWidth: elementWidth
+            }
+
+            FloatSpinBox {
+                id: tfcReferenceTimeSpinBox
+                from: 1
+                to: 200
+                decimals: 1
+                step: 1
+                units: "ms"
+                indicators: false
+                value: dataObjectData.tfcReferenceTime
+                property bool completed: false
+                onValueChanged: {
+                    if (completed) {
+                        dataObjectData.tfcReferenceTime = value;
+                    }
+                }
+                tooltiptext: qsTr("TFC reference time")
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: elementWidth
+                visible: dataObjectData.mode === Measurement.TFC
+
+                Connections {
+                    target: dataObjectData
+                    function onTfcReferenceTimeChanged() {
+                        tfcReferenceTimeSpinBox.value = dataObjectData.tfcReferenceTime;
+                    }
+                }
+
+                Component.onCompleted: {
+                    completed = true;
+                    tfcReferenceTimeSpinBox.value = dataObjectData.tfcReferenceTime;
+                }
             }
 
             DropDown {

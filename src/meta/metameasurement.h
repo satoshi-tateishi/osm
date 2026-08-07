@@ -63,9 +63,6 @@ public:
     float tfcReferenceTime() const;
     void setTfcReferenceTime(float milliseconds);
 
-    float tfcReferenceFrequency() const;
-    void setTfcReferenceFrequency(float hz);
-
     Meta::Measurement::Mode mode() const;
     void setMode(const Mode &mode);
     void setMode(QVariant mode);
@@ -107,7 +104,6 @@ public:
     virtual void gainChanged(float)  = 0;
     virtual void offsetChanged(float) = 0;
     virtual void tfcReferenceTimeChanged(float) = 0;
-    virtual void tfcReferenceFrequencyChanged(float) = 0;
     virtual void modeChanged(Meta::Measurement::Mode)  = 0;
     virtual void averageChanged(unsigned int)  = 0;
     virtual void dataChanelChanged(unsigned int)  = 0;
@@ -127,7 +123,6 @@ protected:
     std::atomic<float> m_gain;
     std::atomic<float> m_offset;
     std::atomic<float> m_tfcReferenceTime;
-    std::atomic<float> m_tfcReferenceFrequency;
     unsigned int m_dataChanel, m_referenceChanel;
     int m_delay;
     std::atomic<unsigned int> m_average;

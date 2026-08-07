@@ -31,7 +31,7 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 
 | 項目 | UI | 意味 |
 |---|---|---|
-| Transform mode | `10`〜`16` / `LTW` / `TFC` | FFTサイズを`2^N`サンプルで指定(`10`=1024〜`16`=65536)。値が大きいほど周波数分解能は上がるが時間分解能・応答速度は下がる。`LTW`(`Meta::Measurement::Mode::LFT`)はMagnitude/Phase/Coherence等の周波数領域計算に対数周波数グリッドの`FourierTransform::Log`を使い、各ビンの窓長を固定係数`wFactor`/`fFactor`による独自のハイブリッド則(厳密なConstant-Q/TFCではない)で変化させる。`TFC`(Time-Frequency-Constant Window)も同じ`FourierTransform::Log`を使うが、基準周波数`f_ref`での基準窓時間`T_ref`から`T(f) = T_ref * (f_ref/f)`とし、`T(f)*f`が一定になる厳密な反比例則で窓長を決めるAFMG SysTuneの「TFC Window™」相当の機能。`TFC`はPhase 2で共通のモード一覧に追加されたため既存のTransform modeドロップダウンから選択できる。ただし基準窓時間と基準周波数の調整UIはまだなく、選択中は現在のプロパティ値(既定値10ms @ 1kHz、またはプロジェクトから復元した値)で動作する。調整UIはPhase 4で追加予定。LTW/TFCともImpulse/Stepの計算には適用されない(第4節参照) |
+| Transform mode | `10`〜`16` / `LTW` / `TFC` | FFTサイズを`2^N`サンプルで指定。`LTW`は対数周波数グリッドの独自の可変窓長則。`TFC`は同じ`FourierTransform::Log`を使い、基準周波数`f_ref=1000Hz`での基準窓時間`T_ref`から`T(f) = T_ref * (f_ref/f)`で窓長を決める。TFC選択時はreference time(1〜200ms、既定値10ms)のみ調整でき、reference frequencyは1kHz固定。reference timeはプロジェクト保存・読み込みとソース複製時に引き継がれる。LTW/TFCともImpulse/Stepの計算には適用されない(第4節参照) |
 | window function | Rectangular / Hann / Hamming / FlatTop / BlackmanHarris / HFT223D / Exponential | FFT窓関数。`WindowFunction::Type`(`src/math/windowfunction.h`)。Hannが既定値 |
 | apply filter on M入力 (inputFilter) | Z / A / C / Notch / BPF 100 / LPF 200 | 測定(M)チャンネルの信号に適用する重み付け/フィルタ。`Z`は無補正(フラット) |
 | M: / R: (dataChanel / referenceChanel) | チャンネル番号 | 測定用(M)・基準用(R)として使うオーディオ入力チャンネル |

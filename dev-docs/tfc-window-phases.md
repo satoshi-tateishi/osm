@@ -2,7 +2,7 @@
 
 [tfc-window-implementation-plan.md](tfc-window-implementation-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-Phase 3のドキュメント更新まで完了済み。Phase 4以降は未着手。
+Phase 4のQML UI実装まで完了済み。Phase 5の結合・負荷検証は未着手。
 
 ## 進捗状況
 
@@ -11,7 +11,7 @@ Phase 3のドキュメント更新まで完了済み。Phase 4以降は未着手
 | Phase 1 | `FourierTransform`層の拡張(コア計算ロジック) | 完了 |
 | Phase 2 | `Measurement`/`Meta::Measurement`層の配線 | 完了 |
 | Phase 3 | ドキュメント更新(インパルス応答側の非対称性の明文化) | 完了 |
-| Phase 4 | QML UI実装 | 未着手 |
+| Phase 4 | QML UI実装 | 完了 |
 | Phase 5 | 結合・負荷検証 | 未着手 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
@@ -52,16 +52,16 @@ Phase 3のドキュメント更新まで完了済み。Phase 4以降は未着手
 **タスク**:
 - [x] `Meta::Measurement::Mode`に`TFC`を追加(`enum Mode {FFT10..FFT16, LFT, TFC};`)
 - [x] `m_modeMap`に`{Measurement::TFC, "TFC"}`を追加(`m_FFTsizes`には追加しない、`LFT`と同様)
-- [x] `tfcReferenceTime`/`tfcReferenceFrequency`の`Q_PROPERTY`・シグナル(`tfcReferenceTimeChanged`/`tfcReferenceFrequencyChanged`)追加
-- [x] `updateFftPower()`に`case Mode::TFC:`追加(`m_dataFT.setTfcEnabled(true)`+reference time/frequency伝搬、`setTimeDomainSize`はFFT12=4096点のまま)。`case Mode::LFT:`側に`m_dataFT.setTfcEnabled(false)`を明示追加(モード往復時のフラグリーク防止)
-- [x] TFCモード中のreference time/frequency変更を検出し、モードを切り替えなくても`prepareLog()`を再実行する処理を追加
-- [x] `toJSON()`/`fromJSON()`に`tfc.referenceTime`/`tfc.referenceFrequency`を追加
+- [x] `tfcReferenceTime`の`Q_PROPERTY`・シグナル追加。reference frequencyは1kHz固定
+- [x] `updateFftPower()`に`case Mode::TFC:`追加(reference timeと1000Hzを伝搬)
+- [x] TFCモード中のreference time変更時に`prepareLog()`を再実行
+- [x] `toJSON()`/`fromJSON()`に`tfc.referenceTime`を追加
 - [x] `clone()`に対応するプロパティのコピーを追加
 
 **完了条件・検証方法**:
 - Transform modeをTFCに切り替え、Magnitude/Phase/Coherenceチャートが破綻なく表示されること
 - モードをTFC⇄LFT⇄Fast(FFT10等)で往復させ、`m_tfcEnabled`のフラグ残留がないこと(LFTに戻したときTFCの窓長計算式が使われていないこと)
-- プロジェクトファイルの保存・読み込みで`tfcReferenceTime`/`tfcReferenceFrequency`が保持されること
+- プロジェクトファイルの保存・読み込みで`tfcReferenceTime`が保持され、旧`tfc.referenceFrequency`キーは無視されること
 
 **依存Phase**: Phase 1完了後
 
@@ -85,17 +85,17 @@ Phase 3のドキュメント更新まで完了済み。Phase 4以降は未着手
 
 ## Phase 4: QML UI実装
 
-**目的**: `MeasurementProperties.qml`にTFCモードの選択肢と、reference time/frequencyを設定するUIを追加する。
+**目的**: `MeasurementProperties.qml`にTFCモードの選択肢と、1kHzでのreference timeを設定するUIを追加する。
 
 **対象ファイル**: `qml/source/MeasurementProperties.qml`
 
 **タスク**:
-- [ ] Transform modeドロップダウンに"TFC"表示を追加(`Measurement.TFC`選択時の`displayText`分岐)
-- [ ] reference time用`FloatSpinBox`追加(`WindowingProperties.qml`の`wideSpinBox`パターンを踏襲、単位ms)
-- [ ] reference frequency用`FloatSpinBox`追加(単位Hz)
-- [ ] 両スピンボックスに`visible: dataObjectData.mode === Measurement.TFC`を設定
-- [ ] `Connections`での外部変更時の再同期、`Component.onCompleted`での初期値反映を実装
-- [ ] `windowSelect`(window function選択)は既存通り非表示のまま据え置く([customizations.md](customizations.md)のHann固定方針を維持)
+- [x] Transform modeドロップダウンに"TFC"表示を追加(`Measurement.TFC`選択時の`displayText`分岐)
+- [x] reference time用`FloatSpinBox`追加(`WindowingProperties.qml`の`wideSpinBox`パターンを踏襲、単位ms)
+- [x] reference frequencyは1kHz固定とし、調整UIを設けない
+- [x] reference timeスピンボックスにTFC時の条件表示と`indicators: false`を設定
+- [x] reference timeの外部変更・初期値を再同期
+- [x] `windowSelect`(window function選択)は既存通り非表示のまま据え置く([customizations.md](customizations.md)のHann固定方針を維持)
 
 **完了条件・検証方法**:
 - モード切替でスピンボックスの表示/非表示が正しく切り替わること

@@ -211,3 +211,13 @@
 - 上記に伴い不要になった"Experiment functions"のON/OFF切り替えUIも非表示化: macOSメニューバー(`qml/menu/Top.qml`の"View"メニュー内`MenuItem`)は`visible: false`/`enabled: false`、ハンバーガーメニュー(`qml/menu/Side.qml`)は該当`ListElement`を削除(`ListModel`は項目単位の`visible`切り替えができないため。区切り線は直前の"Show target"項目に付け替えて維持)。`Appearance::experimentFunctions`プロパティ自体は削除していない(将来的に他の実験的機能で再利用される可能性があるため残置)。
 
 測定タイプごとの設定項目の詳細は[measurement-types.md](measurement-types.md)を参照。
+
+## TFC Windowのreference time / frequency調整UIの追加
+
+`qml/source/MeasurementProperties.qml`
+
+- Transform modeが`TFC`のとき、ドロップダウンの表示を誤解を招く`"Power:TFC"`から`"TFC"`に変更。Fast FFTの`10`〜`16`には従来通り幅に応じて`"Power:"`接頭辞を表示し、`LTW`の表示も変更しない。
+- `TFC`選択中だけreference time(1〜200ms)の`FloatSpinBox`を表示。狭幅で数値と増減ボタンが重なるため`indicators: false`とし、テキスト入力のみにした。
+- reference timeの初期化中書き戻し防止ガード、変更シグナルの`Connections`、完了時の再同期を追加。
+- SysTuneの調査メモでユーザーが操作するのは1つのスケールパラメータと読み取れるため、reference frequencyを1kHz固定とした。`FourierTransform`の汎用APIは残し、上位層の調整プロパティ・リモート同期・JSON永続化・複製処理は削除。旧プロジェクトの`tfc.referenceFrequency`キーは読み込み時に無視される。
+- Hann窓固定方針を維持し、window function選択はTFC時も非表示のまま。

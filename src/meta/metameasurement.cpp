@@ -51,7 +51,7 @@ const std::map<Measurement::Mode, int>Measurement::m_FFTsizes = {
 Measurement::Measurement() : Base(),
     m_polarity(false),
     m_gain(1.f), m_offset(1.f),
-    m_tfcReferenceTime(10.f), m_tfcReferenceFrequency(1000.f),
+    m_tfcReferenceTime(10.f),
     m_dataChanel(0), m_referenceChanel(1), m_delay(0),
     m_average(12),
     m_mode(LFT),
@@ -118,19 +118,6 @@ void Measurement::setTfcReferenceTime(float milliseconds)
     if (!qFuzzyCompare(m_tfcReferenceTime, milliseconds)) {
         m_tfcReferenceTime = milliseconds;
         emit tfcReferenceTimeChanged(m_tfcReferenceTime);
-    }
-}
-
-float Measurement::tfcReferenceFrequency() const
-{
-    return m_tfcReferenceFrequency;
-}
-
-void Measurement::setTfcReferenceFrequency(float hz)
-{
-    if (!qFuzzyCompare(m_tfcReferenceFrequency, hz)) {
-        m_tfcReferenceFrequency = hz;
-        emit tfcReferenceFrequencyChanged(m_tfcReferenceFrequency);
     }
 }
 
