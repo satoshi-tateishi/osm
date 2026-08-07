@@ -231,6 +231,7 @@ Item {
             tooltip: qsTr("show only this source")
             model: SourceModel {
                 unrollGroups: true
+                excludeData: true
                 list: sourceList
             }
             Layout.preferredWidth: 160

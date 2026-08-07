@@ -32,6 +32,7 @@ class SourceModel : public QAbstractListModel
     Q_PROPERTY(bool addNone READ addNone WRITE setAddNone NOTIFY addNoneChanged)
     Q_PROPERTY(bool addAll READ addAll WRITE setAddAll NOTIFY addAllChanged)
     Q_PROPERTY(bool unrollGroups READ unrollGroups WRITE setUnrollGroups NOTIFY unrollGroupsChanged)
+    Q_PROPERTY(bool excludeData READ excludeData WRITE setExcludeData NOTIFY excludeDataChanged)
     Q_PROPERTY(QString noneTitle READ noneTitle WRITE setNoneTitle)
     Q_PROPERTY(QString allTitle READ allTitle WRITE setAllTitle)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
@@ -85,6 +86,9 @@ public:
     bool unrollGroups() const;
     void setUnrollGroups(bool newUnrollGroups);
 
+    bool excludeData() const;
+    void setExcludeData(bool excludeData);
+
 public slots:
     void itemChanged(const Shared::Source &, const QVector<int> &roles);
 
@@ -97,12 +101,13 @@ signals:
     void addAllChanged();
 
     void unrollGroupsChanged();
+    void excludeDataChanged();
     void countChanged();
 
 private:
     SourceList *m_list;
     QUuid m_filter;
-    bool m_addNone, m_addAll, m_unrollGroups;
+    bool m_addNone, m_addAll, m_unrollGroups, m_excludeData;
     int m_noneIndex, m_allIndex;
     QString m_noneTitle, m_allTitle;
 };

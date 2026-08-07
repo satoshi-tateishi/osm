@@ -17,10 +17,13 @@
  */
 #include <qmath.h>
 #include <QUrl>
+#include <QDir>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
+#include <functional>
 
 #include "common/wavfile.h"
 #include "filtersource.h"
@@ -30,6 +33,7 @@
 #include "source/equalizer.h"
 #include "source/group.h"
 #include "source/sourcewindowing.h"
+#include "source/stored.h"
 #include "standardline.h"
 #include "remote/items/groupitem.h"
 #include "union.h"
@@ -49,25 +53,25 @@ SourceList::SourceList(QObject *parent, bool appendMeasurement) :
         add<Measurement>();
     }
 }
-SourceList *SourceList::clone(QObject *parent, QUuid filter, bool unrollGroups) const
+SourceList *SourceList::clone(QObject *parent, QUuid filter, bool unrollGroups, bool excludeData) const
 {
     SourceList *list = new SourceList(parent, false);
-    list->appendItemsFrom(this, filter, unrollGroups);
+    list->appendItemsFrom(this, filter, unrollGroups, excludeData);
 
     return list;
 }
 
-void SourceList::appendItemsFrom(const SourceList *list, QUuid filter, bool unrollGroups)
+void SourceList::appendItemsFrom(const SourceList *list, QUuid filter, bool unrollGroups, bool excludeData)
 {
     for (const auto &item : list->items()) {
         if (filter.isNull() || filter != item->uuid()) {
             auto group = std::dynamic_pointer_cast<Source::Group>(item);
             auto remoteGroup = std::dynamic_pointer_cast<remote::GroupItem>(item);
             if ( group && unrollGroups) {
-                appendItemsFrom(group->sourceList(), filter, unrollGroups);
+                appendItemsFrom(group->sourceList(), filter, unrollGroups, excludeData);
             } else if ( remoteGroup && unrollGroups) {
-                appendItemsFrom(remoteGroup->sourceList(), filter, unrollGroups);
-            } else {
+                appendItemsFrom(remoteGroup->sourceList(), filter, unrollGroups, excludeData);
+            } else if (!excludeData || !isDataSource(item)) {
                 appendItem(item);
             }
         }
@@ -248,10 +252,111 @@ void SourceList::moveToGroup(QUuid targetId, QUuid groupId) noexcept
             }
         }
         if (auto group = std::dynamic_pointer_cast<Source::Group>(sharedGroup)) {
+            if (!isGroupableData(sharedTarget)) {
+                return;
+            }
             removeItem(sharedTarget, false);
             group->add(sharedTarget);
         }
     }
+}
+
+bool SourceList::removeItemFromTree(const Shared::Source &item) noexcept
+{
+    for (int i = 0; i < m_items.size(); ++i) {
+        if (m_items.at(i) == item) {
+            removeItem(item, false);
+            return true;
+        }
+    }
+    for (auto &child : m_items) {
+        if (auto group = std::dynamic_pointer_cast<Source::Group>(child)) {
+            if (group->sourceList()->removeItemFromTree(item)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void SourceList::moveItem(QUuid itemId, QUuid targetGroupId) noexcept
+{
+    Shared::Source item = getByUUid(itemId);
+    if (!item || item->uuid() == targetGroupId) {
+        return;
+    }
+
+    Shared::Source targetGroupSource = targetGroupId.isNull() ? Shared::Source{} : getByUUid(targetGroupId);
+    auto targetGroup = targetGroupSource ? std::dynamic_pointer_cast<Source::Group>(targetGroupSource) : nullptr;
+    if (!targetGroupId.isNull() && !targetGroup) {
+        //target is not a group (or was not found): nothing to do
+        return;
+    }
+
+    if (auto itemAsGroup = std::dynamic_pointer_cast<Source::Group>(item)) {
+        if (targetGroup && (targetGroup == itemAsGroup || itemAsGroup->sourceList()->getByUUid(targetGroupId))) {
+            qDebug() << "loop prevented";
+            return;
+        }
+    }
+
+    if (targetGroup && !isGroupableData(item)) {
+        //only stored data (Stored/Group) can be filed into a group
+        return;
+    }
+
+    if (!removeItemFromTree(item)) {
+        return;
+    }
+
+    if (targetGroup) {
+        targetGroup->add(item);
+    } else {
+        appendItem(item, false);
+        if (!isGroupableData(item)) {
+            //keep "live" sources above stored data: relocate it right before the first data item
+            int dataStart = 0;
+            for (; dataStart < m_items.size() - 1; ++dataStart) {
+                if (isGroupableData(m_items.at(dataStart))) {
+                    break;
+                }
+            }
+            move(m_items.size() - 1, dataStart);
+        }
+    }
+}
+
+bool SourceList::isGroupableData(const Shared::Source &item) noexcept
+{
+    return item && (
+               std::dynamic_pointer_cast<Stored>(item) ||
+               std::dynamic_pointer_cast<Source::Group>(item)
+           );
+}
+
+bool SourceList::isDataSource(const Shared::Source &item) noexcept
+{
+    static const QSet<QString> dataTypeNames = {"Stored", "Group", "RemoteStored", "RemoteGroup"};
+    return item && dataTypeNames.contains(item->objectName());
+}
+
+QVariantList SourceList::groupList() const noexcept
+{
+    QVariantList result;
+    std::function<void(const SourceList *, int)> collect = [&](const SourceList * list, int depth) {
+        for (auto &item : list->m_items) {
+            if (auto group = std::dynamic_pointer_cast<Source::Group>(item)) {
+                QVariantMap entry;
+                entry["uuid"]  = group->uuid().toString();
+                entry["name"]  = group->name();
+                entry["depth"] = depth;
+                result.append(entry);
+                collect(group->sourceList(), depth + 1);
+            }
+        }
+    };
+    collect(this, 0);
+    return result;
 }
 
 int SourceList::indexOf(const Shared::Source &item) const noexcept
@@ -697,6 +802,145 @@ QUuid SourceList::firstChecked() const noexcept
     return m_checked.at(0);
 }
 
+void SourceList::setMultiSelected(const QUuid &uuid, bool selected) noexcept
+{
+    if (uuid.isNull()) {
+        return;
+    }
+    bool contains = m_multiSelected.contains(uuid);
+    if (selected && !contains) {
+        m_multiSelected.push_back(uuid);
+        emit multiSelectedChanged();
+    } else if (!selected && contains) {
+        m_multiSelected.removeAll(uuid);
+        emit multiSelectedChanged();
+    }
+}
+
+bool SourceList::isMultiSelected(const QUuid &uuid) const noexcept
+{
+    return !uuid.isNull() && m_multiSelected.contains(uuid);
+}
+
+void SourceList::clearMultiSelected() noexcept
+{
+    if (!m_multiSelected.isEmpty()) {
+        m_multiSelected.clear();
+        emit multiSelectedChanged();
+    }
+}
+
+int SourceList::multiSelectedCount() const noexcept
+{
+    return m_multiSelected.count();
+}
+
+QStringList SourceList::multiSelectedUuidStrings() const noexcept
+{
+    QStringList result;
+    for (auto &uuid : m_multiSelected) {
+        result << uuid.toString();
+    }
+    return result;
+}
+
+void SourceList::collectStoredTargets(const Shared::Source &src, QSet<QUuid> &out) const noexcept
+{
+    if (!src) {
+        return;
+    }
+    if (auto group = std::dynamic_pointer_cast<Source::Group>(src)) {
+        for (auto &child : group->sourceList()->items()) {
+            collectStoredTargets(child, out);
+        }
+    } else if (std::dynamic_pointer_cast<Stored>(src)) {
+        out.insert(src->uuid());
+    }
+}
+
+QSet<QUuid> SourceList::collectAllStoredTargets() const noexcept
+{
+    QSet<QUuid> out;
+    for (auto &uuid : m_multiSelected) {
+        collectStoredTargets(getByUUid(uuid), out);
+    }
+    return out;
+}
+
+int SourceList::multiSelectedStoredCount() const noexcept
+{
+    return collectAllStoredTargets().count();
+}
+
+bool SourceList::findGroupPath(const Shared::Source &target, QStringList &path) const noexcept
+{
+    for (auto &item : m_items) {
+        if (item == target) {
+            return true;
+        }
+        if (auto group = std::dynamic_pointer_cast<Source::Group>(item)) {
+            path.push_back(group->name());
+            if (group->sourceList()->findGroupPath(target, path)) {
+                return true;
+            }
+            path.pop_back();
+        }
+    }
+    return false;
+}
+
+namespace {
+
+QString sanitizeFileName(QString name) noexcept
+{
+    static const QRegularExpression invalid(QStringLiteral("[\\\\/:*?\"<>|]"));
+    name.replace(invalid, QStringLiteral("_"));
+    name = name.trimmed();
+    return name.isEmpty() ? QStringLiteral("untitled") : name;
+}
+
+QString uniqueFilePath(const QString &dir, const QString &baseName, const QString &suffix) noexcept
+{
+    QString path = dir + "/" + baseName + "." + suffix;
+    int counter = 2;
+    while (QFile::exists(path)) {
+        path = dir + "/" + baseName + " (" + QString::number(counter++) + ")." + suffix;
+    }
+    return path;
+}
+
+} // namespace
+
+bool SourceList::exportSelectedCSV(const QUrl &destination) const noexcept
+{
+    QString rootPath = destination.toLocalFile();
+    if (rootPath.isEmpty() || !QDir().mkpath(rootPath)) {
+        return false;
+    }
+
+    bool ok = true;
+    for (auto &uuid : collectAllStoredTargets()) {
+        Shared::Source item = getByUUid(uuid);
+        auto stored = item ? std::dynamic_pointer_cast<Stored>(item) : nullptr;
+        if (!stored) {
+            continue;
+        }
+
+        QStringList groupPath;
+        findGroupPath(item, groupPath);
+
+        QString dir = rootPath;
+        for (auto &groupName : groupPath) {
+            dir += "/" + sanitizeFileName(groupName);
+            QDir().mkpath(dir);
+        }
+
+        QString filePath = uniqueFilePath(dir, sanitizeFileName(item->name()), QStringLiteral("csv"));
+        ok = stored->saveCSV(QUrl::fromLocalFile(filePath)) && ok;
+    }
+    return ok;
+}
+
 bool SourceList::loadList(const QJsonDocument &document, const QUrl &fileName) noexcept
 {
     fromJSON( document["list"].toArray(), this );
@@ -754,7 +998,7 @@ Shared::Source SourceList::addGroup()
     auto shared_group =  add<Source::Group>();
     if (auto group = std::dynamic_pointer_cast<Source::Group>(shared_group)) {
         auto addInto = selected();
-        if (addInto && !std::dynamic_pointer_cast<Source::Group>(addInto)) {
+        if (addInto && std::dynamic_pointer_cast<Stored>(addInto)) {
             removeItem(addInto, false);
             group->add(addInto);
         }
@@ -805,6 +1049,7 @@ void SourceList::removeItem(const Shared::Source &item, bool deleteItem)
         return;
     }
     m_checked.removeAll(item.uuid());
+    m_multiSelected.removeAll(item.uuid());
     for (int i = 0; i < m_items.size(); ++i) {
         if (m_items.at(i) == item) {
             auto item = get_ref(i);
@@ -815,6 +1060,7 @@ void SourceList::removeItem(const Shared::Source &item, bool deleteItem)
                 item->destroy();
             }
             emit postItemRemoved();
+            emit countChanged();
             break;
         }
     }

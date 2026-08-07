@@ -61,7 +61,7 @@ ApplicationWindow {
         applicationWindow.onXChanged.connect(function() {applicationSettings.setValue("mainwindow/x", x)});
         applicationWindow.onYChanged.connect(function() {applicationSettings.setValue("mainwindow/y", y)});
     }
-    minimumWidth: 768
+    minimumWidth: 968
     minimumHeight: 540
     visibility: applicationAppearance.visibility
     color: applicationAppearance.darkMode ? Material.backgroundColor : "#FFFFFF"
@@ -126,7 +126,7 @@ ApplicationWindow {
             id: righttab
             Layout.fillHeight: true
             Layout.rowSpan: applicationWindow.narrowWindow ? 1 : 2
-            width: 200
+            width: 400
         }
 
         //Properties area

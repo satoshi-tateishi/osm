@@ -38,6 +38,7 @@ DropDown {
         addNone: true
         addAll: true
         unrollGroups: true
+        excludeData: true
         list: sources
         checked: dataObject.selected
         onCheckedChanged: {

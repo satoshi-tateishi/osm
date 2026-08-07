@@ -37,7 +37,6 @@ import "source"
  * For detail settings the bottom bar is used.
  */
 Item {
-    property Item list : sideList
     property int colorIndex: 6;
 
     ColumnLayout {
@@ -104,93 +103,36 @@ Item {
             visible: targetTraceModel.show
         }
 
-        StackView {
-            id: sideList
+        RowLayout {
+            id: listColumns
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignHCenter
             Layout.margins: 0
+            spacing: 0
 
-            initialItem: sourceLayoutComponent
-
-            function openGroup(group) {
-                sideList.push(sourceLayoutComponent, { group: group });
+            SourceColumn {
+                id: dataColumn
+                Layout.fillHeight: true
+                Layout.fillWidth: true
+                columnFilter: "data"
+                showBulkHeader: true
+                rootSources: sourceList
             }
-        }
-        Component {
-            id: sourceLayoutComponent
 
-            ColumnLayout {
-                property var group : null
-                property alias sources : sourcesLayout.sources
-                spacing: 0
+            Rectangle {
+                Layout.fillHeight: true
+                Layout.preferredWidth: 1
+                color: Material.dividerColor
+            }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 50
-                    visible: sideList.depth > 1
-                    color: "transparent"
-                    border.color: group && group.data ? group.data.color : "transparent"
-
-                    RowLayout {
-                        height: 50
-                        width: parent.width
-
-                        Label {
-                            Layout.preferredWidth: 28+16
-                            font.family: "Osm"
-                            text: "\ue80A"
-                            horizontalAlignment: Qt.AlignHCenter
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            Layout.alignment: Qt.AlignVCenter
-                            text: group && group.data ? group.data.name : ""
-                            font.bold: true
-                        }
-
-                    }
-                    TapHandler {
-                        onDoubleTapped: sideList.pop();
-                        onTapped: {
-                            if (group && group.data) {
-                                switch (group.data.objectName) {
-                                    case "Group":
-                                        applicationWindow.properiesbar.open(group, "qrc:/source/GroupProperties.qml");
-                                        break;
-                                    case "Equalizer":
-                                        applicationWindow.properiesbar.open(group, "qrc:/source/EqualizerProperties.qml");
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    DropArea {
-                        anchors { fill: parent; margins: 0 }
-                        onDropped: {
-                            var parentItemInStack = sideList.get(sideList.index - 1, StackView.DontLoad);
-                            var parentSources = parentItemInStack.sources;
-                            var target = drag.source.source;
-
-                            if (!sources || !group || !target) {
-                                return;
-                            }
-                            var source = group.data.pop(target.uuid, false);
-                            if (source) {
-                                parentSources.takeItem(source);
-                            }
-                        }
-                    }
-                }
-
-                SourceLayout {
-                    id: sourcesLayout
-                    Layout.fillHeight: true
-                    Layout.fillWidth: true
-                    sources: group ? group.data.sourceList : sourceList
-                }
+            SourceColumn {
+                id: measurementColumn
+                Layout.fillHeight: true
+                Layout.fillWidth: true
+                columnFilter: "measurement"
+                showBulkHeader: false
+                rootSources: sourceList
             }
         }
 

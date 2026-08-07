@@ -19,9 +19,12 @@
 #define SOURCELIST_H
 
 #include <QObject>
+#include <QSet>
 #include <QVector>
 #include <QString>
+#include <QStringList>
 #include <QUrl>
+#include <QVariantList>
 #include "abstract/source.h"
 #include "shared/source_shared.h"
 
@@ -43,12 +46,15 @@ class SourceList : public QObject
     Q_PROPERTY(Shared::Source selected READ selected NOTIFY selectedChanged)
     Q_PROPERTY(QColor highlightColor READ highlightColor NOTIFY selectedChanged)
     Q_PROPERTY(bool isRoot READ isRoot CONSTANT)
+    Q_PROPERTY(int multiSelectedCount READ multiSelectedCount NOTIFY multiSelectedChanged)
+    Q_PROPERTY(int multiSelectedStoredCount READ multiSelectedStoredCount NOTIFY multiSelectedChanged)
+    Q_PROPERTY(QStringList multiSelectedUuids READ multiSelectedUuidStrings NOTIFY multiSelectedChanged)
     using iterator = QVector<Shared::Source>::iterator;
     using const_iterator = QVector<Shared::Source>::const_iterator;
 
 public:
     explicit SourceList(QObject *parent = nullptr, bool appendMeasurement = true);
-    SourceList *clone(QObject *parent, QUuid filter = {}, bool unrollGroups = false) const;
+    SourceList *clone(QObject *parent, QUuid filter = {}, bool unrollGroups = false, bool excludeData = false) const;
 
     int count() const noexcept;
     const QVector<Shared::Source> &items() const;
@@ -77,8 +83,18 @@ public:
     Q_INVOKABLE bool importWav(const QUrl &fileName) ;
     Q_INVOKABLE bool move(int from, int to) noexcept;
     Q_INVOKABLE void moveToGroup(QUuid targetId, QUuid groupId) noexcept;
+    Q_INVOKABLE void moveItem(QUuid itemId, QUuid targetGroupId) noexcept;
+    Q_INVOKABLE QVariantList groupList() const noexcept;
     Q_INVOKABLE int indexOf(const Shared::Source &item) const noexcept;
     Q_INVOKABLE int indexOf(const QUuid &id) const noexcept;
+
+    Q_INVOKABLE void setMultiSelected(const QUuid &uuid, bool selected) noexcept;
+    Q_INVOKABLE bool isMultiSelected(const QUuid &uuid) const noexcept;
+    Q_INVOKABLE void clearMultiSelected() noexcept;
+    Q_INVOKABLE bool exportSelectedCSV(const QUrl &destination) const noexcept;
+    int multiSelectedCount() const noexcept;
+    int multiSelectedStoredCount() const noexcept;
+    QStringList multiSelectedUuidStrings() const noexcept;
 
     int selectedIndex() const;
     Shared::Source selected() const noexcept;
@@ -154,15 +170,25 @@ signals:
 
     void countChanged();
 
+    void multiSelectedChanged();
+
 private:
     bool loadList(const QJsonDocument &document, const QUrl &fileName) noexcept;
     template<typename T> bool loadObject(const QJsonObject &data, const SourceList *topList);
     template<typename T, typename... Ts> Shared::Source add(Ts...);
     bool importFile(const QUrl &fileName, QString separator);
-    void appendItemsFrom(const SourceList *list, QUuid filter, bool unrollGroups);
+    void appendItemsFrom(const SourceList *list, QUuid filter, bool unrollGroups, bool excludeData = false);
+
+    static bool isGroupableData(const Shared::Source &item) noexcept;
+    static bool isDataSource(const Shared::Source &item) noexcept;
+    bool removeItemFromTree(const Shared::Source &item) noexcept;
+    bool findGroupPath(const Shared::Source &target, QStringList &path) const noexcept;
+    void collectStoredTargets(const Shared::Source &src, QSet<QUuid> &out) const noexcept;
+    QSet<QUuid> collectAllStoredTargets() const noexcept;
 
     QVector<Shared::Source> m_items; //TODO: unordered_map<uuid, shared_ptr>
     QList<QUuid> m_checked{};
+    QList<QUuid> m_multiSelected{};
     QUrl m_currentFile;
     const QList<QColor> m_colors {
         "#F44336", "#FFEB3B", "#9C27B0", "#673AB7",

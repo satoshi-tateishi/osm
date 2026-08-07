@@ -221,3 +221,49 @@
 - reference timeの初期化中書き戻し防止ガード、変更シグナルの`Connections`、完了時の再同期を追加。
 - SysTuneの調査メモでユーザーが操作するのは1つのスケールパラメータと読み取れるため、reference frequencyを1kHz固定とした。`FourierTransform`の汎用APIは残し、上位層の調整プロパティ・リモート同期・JSON永続化・複製処理は削除。旧プロジェクトの`tfc.referenceFrequency`キーは読み込み時に無視される。
 - Hann窓固定方針を維持し、window function選択はTFC時も非表示のまま。
+
+## STOREデータ管理: グループ間移動・複数選択・一括CSVダウンロード
+
+`src/sourcelist.h` / `.cpp`、`qml/SourceLayout.qml`、`qml/source/StoredProperties.qml`
+
+- **グループ間移動の導線追加**: 既存の`Source::Group`(フォルダ相当)はドラッグ&ドロップでしかアイテムを格納できず、「あるグループから別のグループへ直接移動する」「ルート(最上位)へ戻す」手段が分かりにくかった。各行に新しい「移動」ボタン(``アイコン)を追加し、`Qt.labs.platform.Menu`で「Move to top level」+ 全グループ一覧(ネストを考慮したインデント付き)を表示、選択したアイテムを直接そこへ移動できるようにした。
+  - C++側に`SourceList::moveItem(QUuid itemId, QUuid targetGroupId)`(木全体を再帰的に辿って現在の格納場所から取り除き、指定先へ追加)、`SourceList::groupList()`(木全体の`Group`一覧を`{uuid, name, depth}`で返す)、private再帰ヘルパー`removeItemFromTree()`を追加。既存の`moveToGroup()`(ドラッグ&ドロップ用、同一階層内でしか機能しない)はそのまま残し、置き換えていない。
+  - 常にルートの`sourceList`(QMLのcontext property)から呼ぶ前提(`getByUUid`/`removeItemFromTree`が木全体を辿るため、現在表示中の階層が root でもグループ内でも正しく機能する)。
+- **複数選択(Shift/⌘・Ctrl+クリック)**: `SourceLayout.qml`のサイドバー一覧はこれまで`ListView.currentIndex`による単一選択のみだった。Shiftクリックで範囲選択、⌘(macOS)/Ctrl(Windows/Linux)クリックでトグル選択できるようにした。対象は全ソース種別(Measurement/Stored/Group等、共通コンポーネントのため)。
+  - C++側に`SourceList`の新しい選択状態(既存の`m_checked`とは別物。`m_checked`は入力ソース選択コンボボックス用の無関係な機能のため流用せず分離): `m_multiSelected`、`setMultiSelected()`/`isMultiSelected()`/`clearMultiSelected()`、および`multiSelectedCount`/`multiSelectedStoredCount`/`multiSelectedUuids`の`Q_PROPERTY`(`multiSelectedChanged`シグナルでQML側は自動的にリアクティブ)。
+  - 修飾キー付きクリック時はプロパティパネルの自動オープンを抑止(`dragArea.suppressOpen`)。
+- **一括CSVダウンロード**: 複数選択時、`ListView.header`に選択件数バーと「Download CSV」ボタンを表示(選択中に`Stored`が1件も無ければ無効)。クリックすると`Qt.labs.platform.FileDialog`(`SaveFile`モード)を**保存先フォルダの命名ダイアログとして流用**して開く(初期ディレクトリ=デスクトップ、初期名=`OSM_yyyyMMdd_HHmmss`)。確定すると指定パスをフォルダとして作成し、そこへCSVを書き出す。
+  - **Groupを選択した場合はその中の`Stored`データ全てを対象に含める**(`collectStoredTargets()`で`Group`を再帰的に展開)。
+  - **選択操作を行った階層を基準にディレクトリ構造を維持する**: `findGroupPath()`で対象アイテムの祖先グループ名チェーンを求め、`<出力先>/<Group名>/.../<測定名>.csv`という構造で書き出す(`exportSelectedCSV()`)。ファイル名・フォルダ名はファイルシステムで使えない文字を`_`に置換し、同名衝突時は連番を付与する。
+- **単体ダウンロードのデフォルト値修正**: `StoredProperties.qml`の「Save data as」ドロップダウンは`osm/cal/txt/csv/frd/wav`の6形式があったが、**csvのみ**に絞った(他形式のコード自体は`switch`文に残置、実質到達しない)。保存ダイアログを`QtQuick.Dialogs 1.2`の`FileDialog`から`Qt.labs.platform.FileDialog`に置き換え、初期ディレクトリ=デスクトップ(`Labs.StandardPaths.writableLocation(Labs.StandardPaths.DesktopLocation)`)、初期ファイル名=測定名を設定した。
+  - 従来の`folder: (typeof shortcuts !== 'undefined' ? shortcuts.home : Filesystem.StandardFolder.Home)`という束縛は、デスクトップビルドでは`shortcuts`も独自型`Filesystem`もQML側に登録されておらず(`src/main.cpp`で`Q_OS_IOS`時のみ登録)評価に失敗し、実質OS標準のフォールバック(ホーム相当)になっていた。これが「保存先の既定がホーム」「ファイル名が空欄」の直接原因。同じパターンが`main.qml`や`Plot/*Properties.qml`等の他のFileDialogにも残っているが、今回はSTOREのダウンロード関連のみ修正し、他は対象外とした。
+
+### 動作確認後の修正(UI調整)
+
+`qml/SourceLayout.qml`
+
+- 一括ダウンロードバーのボタン文言「Download CSV」がサイドバーの幅に対して長すぎ、「N selected」ラベルと重なって表示が崩れていた。「STORE」に短縮し、ヘッダー`Item`の高さを`bulkBar.implicitHeight`依存(循環参照気味で不安定だった)から固定`50`に変更してレイアウト崩れを解消。
+- **Groupを単独選択(Shift/Ctrlを使わない通常クリック)した場合にダウンロードする導線が無い問題を修正**: 従来はバー自体を`sources.multiSelectedCount > 0`の時だけ表示していたため、通常クリックによる単一選択(`currentIndex`/`selectedIndex`側の仕組みで、複数選択用の`m_multiSelected`とは別系統)では何も表示されなかった。バーを常時表示に変更し、「STORE」「Cancel」ボタンは既定でグレーアウト、複数選択されたデータ(またはGroup)がある、もしくは単一選択中のアイテムが`Stored`/`Group`である場合にのみ有効化する(`hasExportableSelection`)。「STORE」クリック時、複数選択が空で単一選択のみの場合はその1件を`setMultiSelected()`で複数選択側に取り込んでからエクスポート処理(`exportSelectedCSV`)を呼ぶことで、単一選択・複数選択どちらの経路でも同じダウンロード処理を再利用している。
+- **バグ修正**: 「Cancel」ボタンで単一選択(Group単独選択など)を解除する際、`sideList.currentIndex = -1`を経由して`sources.selectedIndex`に反映させようとしていたが(`onCurrentIndexChanged`ハンドラでの間接同期)、`currentIndex`と`sources.selectedIndex`が既に食い違っている状況(既存プロジェクトのJSON復元で`selectedIndex`だけが復元され`currentIndex`側のシグナルが発火しないケースなど)では変更が伝播せず選択が解除されないことがあった。`sources.selectedIndex = -1`をボタンハンドラから直接設定するように修正し、間接同期に依存しない形にした。
+- 「N selected」の選択件数ラベルを削除(ユーザー要望)。`bulkSelectionCount`プロパティも不要になったため削除し、ラベルがあった位置は`Layout.fillWidth`の空`Item`に置き換えてボタンを右寄せのまま維持。
+- **「測定」(Measurement/Union/Filter/Windowing/Equalizer等)と「測定データ」(Stored/Group)の間に区切り線を追加**(ユーザー要望)。各行の`dragArea`に`showTypeSeparator`プロパティを追加し、「自分がStored/Groupで、リスト上の直前のアイテムがStored/Groupではない」場合にのみ、行の上端に1pxの`Rectangle`(`Material.dividerColor`)を表示する。`index`に依存する束縛のため、ドラッグ&ドロップによる並び替えやグループ移動で順序が変わった際も自動的に再評価される。直前アイテムの参照は`sources.get(index - 1)`(Q_INVOKABLE、非リアクティブ)を使うが、`index`自体の変化がバインディング全体の再評価トリガーになるため実用上問題ない。
+
+## サイドバーの3カラム化(チャート | データ | 測定)と関連バグ修正
+
+`qml/main.qml`、`qml/SideBar.qml`、`qml/SourceColumn.qml`(新規)、`qml/SourceLayout.qml`、`src/sourcelist.h`/`.cpp`
+
+- **3カラムレイアウト化**(ユーザー要望): サイドバーを「データ」列(Stored/Group、STORE/CANCELバー付き)と「測定」列(Measurement/Union/Filter/Windowing/Equalizer/StandardLine)に横分割。全体の並びは`チャート | データ | 測定`。
+  - `SourceLayout.qml`に`columnFilter`("all"/"data"/"measurement")プロパティを追加。各行の`isDataType`(Stored/Group/RemoteStored/RemoteGroup判定)と組み合わせ、非該当行を`visible:false`・`height:0`にして列ごとに絞り込む(実データは1つの共有`SourceList`のまま、表示だけをQML側で間引く方式。C++側の一覧フィルタリング機構は新設していない)。
+  - 従来1つだった`StackView`+グループ階層ナビゲーションのブロックを`qml/SourceColumn.qml`に切り出し、`columnFilter`/`showBulkHeader`/`rootSources`をパラメータ化して2列分インスタンス化(`SideBar.qml`)。各列が独立したGroup/Equalizerのドリルダウン階層を持つ。
+  - `SourceLayout.qml`の`onDoubleClicked`によるグループ展開は、従来`applicationWindow.dataSourceList.list.openGroup(...)`という単一StackView前提の参照だったが、列ごとに`hostStack`プロパティで自分がぶら下がる`SourceColumn`(StackView)を直接参照する形に変更(2列化に伴い「the」StackViewが存在しなくなったため)。
+  - サイドバー幅を200→400、ウィンドウ`minimumWidth`を768→968に拡大。
+  - 「測定」列(`showBulkHeader: false`)にはSTORE/CANCELバーを表示せず、「移動」ボタンもStored/Groupの行にのみ表示するよう変更(Groupにはデータしか入れられなくなったため、測定側で出す意味がない)。
+- **Groupの中身をSTOREデータのみに制限**(ユーザー要望、3カラム化に伴う整合性のため): `SourceList::isGroupableData()`(新設、`Stored`/`Group`のみtrue)を`moveToGroup()`(ドラッグ&ドロップ)・`moveItem()`(移動メニュー)・`addGroup()`(新規グループ作成時の自動格納)の3箇所すべてに適用し、測定(Measurement等)がグループに入らないようにした。
+- **バグ修正: 測定をルートへ戻すと一番下(データの下)に来てしまう問題**: `moveItem()`でルートへ戻す際に`appendItem()`で末尾追加していたため、既存のデータ項目より下に来ていた。移動対象が「測定」側の場合は、追加後に`move()`で最初のデータ項目の直前まで引き上げるようにし、常に「測定が上・データが下」の並びを維持するようにした。
+- **バグ修正(重要): ドラッグ&ドロップによる並び替え・グループへの格納が機能しなくなっていた**: 各行の`content`(ドラッグ中に表示される実体)は、保持(hold)開始時に`ParentChange`で`applicationWindow.dataSourceList`(サイドバー全体)へ親を差し替える実装になっていたが、`AnchorChanges`で`horizontalCenter`/`verticalCenter`しか解除しておらず、`left`/`right`/`top`のアンカー(新しい親を指す形で再評価される)が残ったままだった。その結果、ドラッグ中の`content`が新しい親(サイドバー全体)の左上に強制的に貼り付き、マウス追従が効かず、他の行の`DropArea`に一切入らない状態になっていた。`AnchorChanges`で`left`/`right`/`top`も明示的に解除し、かつ`content`にアンカーに依存しない明示的な`width: dragArea.width`を追加(アンカー解除後も幅を維持するため)して解消。この不具合は3カラム化以前から存在していた可能性が高い(既存コードのバグで、今回の作業中に検証して発見・修正した)。
+- **バグ修正: ドラッグ開始条件が「静止したまま長押し」(`onPressAndHold`)前提になっており、マウス/トラックパッドで押してすぐ動かす一般的な操作では並び替えが開始できなかった**: 押下位置からの縦方向の移動量が横方向の移動量より大きく、かつ一定量(10px)を超えた時点でも`held`を立てるようにし、静止長押しを待たずにドラッグを開始できるようにした(`onPressAndHold`自体は残しており、タッチ操作等での従来動作にも影響しない)。横方向優位の移動は従来通りスワイプ削除として扱われる。
+- **バグ修正: Groupからデータを取り出しても、Group行に表示される色ドットが更新されず取り出した項目の色が残り続けていた**: `SourceList::removeItem(const Shared::Source&, bool)`が`preItemRemoved`/`postItemRemoved`は発行するものの`countChanged()`を発行していなかったため(`appendItem()`側は発行していた、非対称なバグ)、`Group.qml`のドット表示`Repeater`(`sharedGroup.sourceList.count`にバインド)が項目削除時に再評価されず、古い個数のまま表示され続けていた。`removeItem()`に`emit countChanged();`を追加して解消。
+- **バグ修正(根本原因): 「Group関連の移動はできるが、Stored単体同士の並び替えができない」問題**: 上記2つの修正後も、複数行をまたぐ並び替え(例: 一番下の項目を一番上まで運ぶ)が安定して機能しなかった。原因は`ListView`(`Flickable`)自身の「ドラッグでスクロール」が、行の並び替え用ドラッグと同じ「押して縦に動かす」ジェスチャーを奪い合っていたため。`ListView`のマウスドラッグによるスクロールを`interactive: false`で無効化し、`WheelHandler`でホイールスクロールのみ有効にすることで解消。あわせて、`MouseArea.onReleased`は`content.Drag`/`DropArea`によるドラッグが完了すると(内部でマウスグラブが奪われるため)確実には発火しないことが判明したため、`onCanceled`でも`held`をリセットするようにした(そうしないと行のドラッグ状態が`true`のまま固定されてしまう)。並び替え自体は`DropArea.onEntered`(確実に発火する)で行う方式を維持している。
+- **バグ修正: Groupが先頭にあるとき、単体データをGroupより上へ移動できない**: `DropArea.onEntered`が、ホバー対象がGroupの場合に並び替え処理そのものをスキップ(`return`)していたため、Groupの上を通過すること自体ができず、Groupが一番上にある場合は「その上に出す」手段が無かった。Group上をホバーしても通常の行と同様に`sources.move()`で並び替えを行うようにし、実際にGroupの上へ「格納」する動作は release 時の`DropArea.onDropped`(`moveToGroup`)のみに限定した。これにより、Groupの直前直後へ普通に並び替えられ、実際にGroup内へ格納したい場合はGroupの上で指を離す(ドロップする)操作で区別する。
+- **バグ修正: 各チャート(Magnitude/Phase等)プロパティの「show only selected sources」ドロップダウンに、データ列(Stored/Group)の値まで表示されてしまう**: 3カラム化以前は気づきにくかったが、この一覧(`qml/elements/Select.qml`)は`unrollGroups: true`でルートの`sourceList`をそのまま辿るため、Group内にネストされた`Stored`もすべて平坦化されて選択肢に混ざっていた(グループ化に伴い顕在化)。この一覧はチャートに表示する「測定」を選ぶためのものであり、`Stored`/`Group`/`RemoteStored`/`RemoteGroup`(データ列の型)は対象外とすべきなので、`SourceModel`に`excludeData`プロパティ(新設)を追加し、`Select.qml`側で`true`に設定。C++側は`SourceList::clone()`/`appendItemsFrom()`に`excludeData`引数を追加し、新設の`SourceList::isDataSource()`(objectNameが`Stored`/`Group`/`RemoteStored`/`RemoteGroup`のいずれかを判定、`qml/SourceLayout.qml`の`isDataType`判定と同じ基準)に該当する項目を一覧生成時にスキップするようにした。`UnionProperties.qml`等、他の箇所で使われる`SourceModel`(Union/Windowingのソース選択など、Storedも選択対象に含めたいケース)は`excludeData`を指定していないため影響なし。
+  - `Plot/SpectrogramProperties.qml`の「show only this source」は共通の`Select.qml`要素を使わず`SourceModel`を直接インスタンス化していたため、上記修正だけでは漏れていた。こちらにも同様に`excludeData: true`を追加。

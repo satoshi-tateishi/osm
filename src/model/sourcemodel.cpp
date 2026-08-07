@@ -21,7 +21,7 @@
 
 SourceModel::SourceModel(QObject *parent)
     : QAbstractListModel(parent), m_list(nullptr), m_filter(),
-      m_addNone(false), m_addAll(false), m_unrollGroups(false),
+      m_addNone(false), m_addAll(false), m_unrollGroups(false), m_excludeData(false),
       m_noneIndex(-1), m_allIndex(-1),
       m_noneTitle("None"), m_allTitle("All")
 {
@@ -103,8 +103,8 @@ void SourceModel::setList(SourceList *list)
 {
     beginResetModel();
 
-    if (m_addAll || m_addNone || !m_filter.isNull() || m_unrollGroups) {
-        list = list->clone(this, filter(), m_unrollGroups);
+    if (m_addAll || m_addNone || !m_filter.isNull() || m_unrollGroups || m_excludeData) {
+        list = list->clone(this, filter(), m_unrollGroups, m_excludeData);
     }
 
     if (m_addNone) {
@@ -287,4 +287,17 @@ void SourceModel::setUnrollGroups(bool newUnrollGroups)
         return;
     m_unrollGroups = newUnrollGroups;
     emit unrollGroupsChanged();
+}
+
+bool SourceModel::excludeData() const
+{
+    return m_excludeData;
+}
+
+void SourceModel::setExcludeData(bool excludeData)
+{
+    if (m_excludeData == excludeData)
+        return;
+    m_excludeData = excludeData;
+    emit excludeDataChanged();
 }

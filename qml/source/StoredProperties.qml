@@ -18,8 +18,8 @@
 import QtQuick 2.7
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.13
-import QtQuick.Dialogs 1.2
 import QtQuick.Controls.Material 2.12
+import Qt.labs.platform 1.1 as Labs
 
 import OpenSoundMeter 1.0
 import "qrc:/elements"
@@ -125,10 +125,12 @@ Item {
                     displayText: qsTr("Save data as");
 
                     implicitWidth: 170
-                    model: ["osm", "cal", "txt", "csv", "frd", "wav"]
+                    model: ["csv"]
 
                     onActivated: function() {
                         saveas = currentText;
+                        var safeName = (dataObjectData.name || "untitled").replace(/[\\/:*?"<>|]/g, "_");
+                        fileDialog.currentFile = fileDialog.folder + "/" + safeName + "." + saveas;
                         fileDialog.open();
                     }
 
@@ -171,31 +173,32 @@ Item {
         }
     }
 
-    FileDialog {
+    Labs.FileDialog {
         id: fileDialog
-        selectExisting: false
-        title: "Please choose a file's name"
-        folder: (typeof shortcuts !== 'undefined' ? shortcuts.home : Filesystem.StandardFolder.Home)
+        fileMode: Labs.FileDialog.SaveFile
+        title: qsTr("Please choose a file's name")
+        folder: Labs.StandardPaths.writableLocation(Labs.StandardPaths.DesktopLocation)
+        nameFilters: ["CSV files (*.csv)"]
         defaultSuffix: saveas
         onAccepted: {
             switch (saveas) {
                 case "osm":
-                    dataObjectData.save(fileDialog.fileUrl);
+                    dataObjectData.save(fileDialog.file);
                     break;
                 case "cal":
-                    dataObjectData.saveCal(fileDialog.fileUrl);
+                    dataObjectData.saveCal(fileDialog.file);
                     break;
                 case "txt":
-                    dataObjectData.saveTXT(fileDialog.fileUrl);
+                    dataObjectData.saveTXT(fileDialog.file);
                     break;
                 case "csv":
-                    dataObjectData.saveCSV(fileDialog.fileUrl);
+                    dataObjectData.saveCSV(fileDialog.file);
                     break;
                 case "frd":
-                    dataObjectData.saveFRD(fileDialog.fileUrl);
+                    dataObjectData.saveFRD(fileDialog.file);
                     break;
                 case "wav":
-                    dataObjectData.saveWAV(fileDialog.fileUrl);
+                    dataObjectData.saveWAV(fileDialog.file);
                     break;
             }
         }
