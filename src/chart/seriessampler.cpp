@@ -1,6 +1,7 @@
 #include "seriessampler.h"
 
 #include "abstract/source.h"
+#include "math/complex.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -66,6 +67,121 @@ QString MagnitudeSeriesSampler::sampleJson(unsigned int pointsPerOctave)
     payload["color"] = m_source->color().name();
     payload["frequency"] = frequency;
     payload["magnitudeDb"] = magnitudeDb;
+
+    return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+}
+
+PhaseSeriesSampler::PhaseSeriesSampler() : FrequencyBasedSeriesHelper()
+{
+}
+
+void PhaseSeriesSampler::setSource(const Shared::Source &source)
+{
+    m_source = source;
+}
+
+const Shared::Source &PhaseSeriesSampler::source() const
+{
+    return m_source;
+}
+
+QString PhaseSeriesSampler::sampleJson(unsigned int pointsPerOctave)
+{
+    if (!m_source || !m_source->active()) {
+        return QString();
+    }
+
+    QJsonArray frequency, phaseDeg;
+    Complex value(0);
+    bool hasData = false;
+
+    m_source->lock();
+    if (m_source->frequencyDomainSize()) {
+        hasData = true;
+
+        auto accumulate = [this, &value](const unsigned int &i) {
+            value += m_source->phase(i);
+        };
+
+        auto collected = [&value, &frequency, &phaseDeg](const float &bandStart, const float &bandEnd,
+                                                          const unsigned int &count) {
+            auto avg = value / static_cast<float>(count);
+            auto degrees = std::atan2(avg.imag, avg.real) * 180.0 / M_PI;
+            frequency.append((bandStart + bandEnd) / 2.0);
+            phaseDeg.append(std::isfinite(degrees) ? QJsonValue(degrees) : QJsonValue());
+            value = Complex(0);
+        };
+
+        iterate(pointsPerOctave, accumulate, collected);
+    }
+    m_source->unlock();
+
+    if (!hasData) {
+        return QString();
+    }
+
+    QJsonObject payload;
+    payload["sourceName"] = m_source->name();
+    payload["color"] = m_source->color().name();
+    payload["frequency"] = frequency;
+    payload["phaseDeg"] = phaseDeg;
+
+    return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+}
+
+CoherenceSeriesSampler::CoherenceSeriesSampler() : FrequencyBasedSeriesHelper()
+{
+}
+
+void CoherenceSeriesSampler::setSource(const Shared::Source &source)
+{
+    m_source = source;
+}
+
+const Shared::Source &CoherenceSeriesSampler::source() const
+{
+    return m_source;
+}
+
+QString CoherenceSeriesSampler::sampleJson(unsigned int pointsPerOctave)
+{
+    if (!m_source || !m_source->active()) {
+        return QString();
+    }
+
+    QJsonArray frequency, coherenceValue;
+    float value = 0.f;
+    bool hasData = false;
+
+    m_source->lock();
+    if (m_source->frequencyDomainSize()) {
+        hasData = true;
+
+        auto accumulate = [this, &value](const unsigned int &i) {
+            value += m_source->coherence(i);
+        };
+
+        auto collected = [&value, &frequency, &coherenceValue](const float &bandStart, const float &bandEnd,
+                                                                const unsigned int &count) {
+            auto avg = value / count;
+            frequency.append((bandStart + bandEnd) / 2.0);
+            coherenceValue.append(std::isfinite(avg) ? QJsonValue(avg) : QJsonValue());
+            value = 0.f;
+        };
+
+        iterate(pointsPerOctave, accumulate, collected);
+    }
+    m_source->unlock();
+
+    if (!hasData) {
+        return QString();
+    }
+
+    QJsonObject payload;
+    payload["sourceName"] = m_source->name();
+    payload["color"] = m_source->color().name();
+    payload["frequency"] = frequency;
+    payload["coherenceValue"] = coherenceValue;
 
     return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 }

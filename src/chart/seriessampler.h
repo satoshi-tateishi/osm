@@ -28,6 +28,40 @@ private:
     Shared::Source m_source;
 };
 
+class PhaseSeriesSampler : private FrequencyBasedSeriesHelper
+{
+public:
+    explicit PhaseSeriesSampler();
+
+    void setSource(const Shared::Source &source);
+
+    // 戻り値: {"sourceName","color","frequency":[...],"phaseDeg":[...]} のJSON文字列。
+    QString sampleJson(unsigned int pointsPerOctave = 12);
+
+protected:
+    const Shared::Source &source() const override;
+
+private:
+    Shared::Source m_source;
+};
+
+class CoherenceSeriesSampler : private FrequencyBasedSeriesHelper
+{
+public:
+    explicit CoherenceSeriesSampler();
+
+    void setSource(const Shared::Source &source);
+
+    // 戻り値: {"sourceName","color","frequency":[...],"coherenceValue":[...]} のJSON文字列。
+    QString sampleJson(unsigned int pointsPerOctave = 12);
+
+protected:
+    const Shared::Source &source() const override;
+
+private:
+    Shared::Source m_source;
+};
+
 } // namespace Chart
 
 #endif // CHART_SERIESSAMPLER_H

@@ -16,8 +16,16 @@ body {
   color: rgba(255, 255, 255, 0.7);
 }
 
-#chart {
+.chart {
   display: block;
   border: 1px solid rgba(255, 255, 255, 0.157);
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 1rem 0 0.25rem;
 }

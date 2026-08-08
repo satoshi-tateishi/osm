@@ -13,6 +13,8 @@ void DataBridge::setSource(const Shared::Source &source)
     }
     m_source = source;
     m_magnitudeSampler.setSource(source);
+    m_phaseSampler.setSource(source);
+    m_coherenceSampler.setSource(source);
     if (m_source) {
         connect(m_source.get(), &Abstract::Source::readyRead, this, &DataBridge::onReadyRead);
     }
@@ -20,9 +22,19 @@ void DataBridge::setSource(const Shared::Source &source)
 
 void DataBridge::onReadyRead()
 {
-    auto json = m_magnitudeSampler.sampleJson();
-    if (!json.isEmpty()) {
-        emit magnitudeUpdated(json);
+    auto magnitudeJson = m_magnitudeSampler.sampleJson();
+    if (!magnitudeJson.isEmpty()) {
+        emit magnitudeUpdated(magnitudeJson);
+    }
+
+    auto phaseJson = m_phaseSampler.sampleJson();
+    if (!phaseJson.isEmpty()) {
+        emit phaseUpdated(phaseJson);
+    }
+
+    auto coherenceJson = m_coherenceSampler.sampleJson();
+    if (!coherenceJson.isEmpty()) {
+        emit coherenceUpdated(coherenceJson);
     }
 }
 

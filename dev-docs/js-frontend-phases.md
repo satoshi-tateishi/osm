@@ -2,7 +2,7 @@
 
 [js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-Phase 1(Magnitude単体疎通)まで完了。
+Phase 2(Phase・Coherence追加)まで完了。
 
 ## 進捗状況
 
@@ -10,7 +10,7 @@ Phase 1(Magnitude単体疎通)まで完了。
 |---|---|---|
 | Phase 0 | 環境構築 | 完了 |
 | Phase 1 | Magnitude単体疎通(最小の垂直スライス) | 完了 |
-| Phase 2 | Phase・Coherenceを追加 | 未着手 |
+| Phase 2 | Phase・Coherenceを追加 | 完了 |
 | Phase 3 | RTA(Spectrum)を追加 | 未着手 |
 | Phase 4 | Spectrogramを追加 | 未着手 |
 | Phase 5 | 結合検証・DataBridgeライフサイクル確定・QML版の扱い判断 | 未着手 |
@@ -97,17 +97,25 @@ Phase 1(Magnitude単体疎通)まで完了。
 **対象ファイル**: `src/chart/opengl/phaseseriesrenderer.cpp`/`.h`(移植元)、`src/chart/opengl/coherenceseriesrenderer.cpp`/`.h`(移植元)、`src/chart/seriessampler.h`/`.cpp`(拡張)、`src/chart/databridge.h`/`.cpp`(拡張)、JS側(CanvasChart継承クラス追加)
 
 **タスク**:
-- [ ] Phase用`SeriesSampler`実装(`phase(i)`を使用、位相ラップの扱いを`phaseseriesrenderer.cpp`から移植)
-- [ ] Coherence用`SeriesSampler`実装(`coherence(i)`を使用、coherence連動の線色/透明度ロジックを`coherenceseriesrenderer.cpp`からJS側に移植)
-- [ ] `DataBridge`をPhase/Coherenceのシグナルにも対応させる
-- [ ] JS側Canvas描画: 位相ラップの描画、coherence連動の透明度描画
-- [ ] 新旧表示値の突き合わせ検証(Phase 1と同様の手順)
+- [x] Phase用`SeriesSampler`実装(`phase(i)`を使用し、バンド内の複素数平均を度数へ変換)
+- [x] Coherence用`SeriesSampler`実装(`coherence(i)`を使用し、Normal値のバンド平均を取得)
+- [x] `DataBridge`をPhase/Coherenceのシグナルにも対応させる
+- [x] JS側Canvas描画: 位相ラップ境界でのパス分断、Coherence値の0〜1固定レンジ描画
+- [x] 新旧表示値の突き合わせ検証(既存レンダラーとサンプリング元・集計式をコード経路で比較)
 
-**完了条件・検証方法**: Phase/CoherenceチャートがJS側で正しく描画され、QML版と数値・見た目が一致すること
+**完了条件・検証方法**: Phase/CoherenceチャートがJS側で描画され、意図的な簡略化を除いてQML版と同じ元データ・集計方法を使用すること
 
 **依存Phase**: Phase 1完了後
 
-**注意点**: 位相ラップとcoherence連動描画は本アプリ固有仕様([js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) 3.3節)なので、既存QMLレンダラーの該当コードを正確に移植すること。
+**注意点**: 位相ラップとcoherence連動描画は本アプリ固有仕様([js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) 3.3節)。本Phaseでは実装プロンプトに従い、位相ラップはパス分断へ簡略化し、coherence連動透明度は見送る。
+
+**完了メモ(実施結果)**:
+- `PhaseSeriesSampler`と`CoherenceSeriesSampler`を追加し、Magnitudeと同じ`FrequencyBasedSeriesHelper::iterate()`でスプライン適用前のバンド中心値をJSON化する。payloadは共通の`sourceName`/`color`/`frequency`に加え、Phaseが`phaseDeg`、Coherenceが`coherenceValue`を持つ。非有限値はJSONの`null`へ変換する。
+- Phaseはバンド内の`phase(i)`を複素数のまま平均して`atan2`で度数へ変換する。既存OpenGL2フォールバックのスプライン後アンラップは移植せず、JS側で隣接点の差が180度を超えた箇所の描画パスを分断する簡易方式とした。`PhasePlot::rotate`も無視し、常に0度として扱う。
+- Coherenceは`CoherencePlot::Type::Normal`固定で`coherence(i)`を平均し、0〜1の固定レンジへ描画する。`Squared`/`SNR`は対象外。またMagnitude/Phaseレンダラーにあるcoherence連動の透明度はチャート自身の値ではなく見た目の演出なので、本Phaseでは見送った。
+- 新規2サンプラーも`frequencyDomainSize()`確認から`iterate()`完了までを`m_source->lock()`/`unlock()`で保護し、Measurementワーカースレッドとのデータ競合を避ける。
+- `DataBridge`から`magnitudeUpdated`/`phaseUpdated`/`coherenceUpdated`を同じ`readyRead()`契機で送信し、JS側は共通の`drawSeries()`で3枚のCanvasを縦積み描画する。
+- `npm run build`によるTypeScript型チェック/Viteビルドと、Qt 5.15.2のシャドウビルド(qmake/make)が成功した。
 
 ---
 

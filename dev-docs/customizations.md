@@ -348,3 +348,13 @@
 - ダークモード配色は`src/chart/palette.cpp`に合わせ、背景`#000000`、グリッド/枠線`rgba(255,255,255,0.157)`(`QColor(255,255,255,40)`相当)、文字`rgba(255,255,255,255)`、Magnitude線はソース色とした。
 - **レビュー修正: Measurementデータ読取時の競合を解消**: `Measurement::transform()`はワーカースレッドで周波数領域データを書き換えるため、`MagnitudeSeriesSampler::sampleJson()`の`frequencyDomainSize()`確認から`iterate()`完了までを`m_source->lock()`/`unlock()`で保護した。`readyRead()`がGUIスレッドへキュー配送された後に次の測定周期と重なっても、書換中の`m_ftdata`を読まない。
 - **レビュー修正: 無音帯域を0dBとして描画しない**: パワーが0の帯域で生じる非有限dBをC++側でJSONの`null`へ明示変換し、JS側の型を`(number | null)[]`へ変更した。Y軸範囲は有限値だけから計算し、`null`区間ではCanvasのパスを分断するため、無音/未接続帯域が0dBへスパイクしない。
+
+## フロントエンドJS化 Phase 2(Phase・Coherence追加)の実施
+
+[js-frontend-phases.md](js-frontend-phases.md) Phase 2参照。Phase 1のMagnitudeパイプラインをPhase/Coherenceへ拡張し、実験的JSウィンドウを3チャート構成にした。
+
+- `src/chart/seriessampler.h`/`.cpp`: `PhaseSeriesSampler`と`CoherenceSeriesSampler`を追加した。Phase payloadは`{"sourceName", "color", "frequency": [...], "phaseDeg": [...]}`、Coherence payloadは`{"sourceName", "color", "frequency": [...], "coherenceValue": [...]}`。非有限値はMagnitudeと同様に`null`とし、両サンプラーとも読取区間をソースの`lock()`/`unlock()`で保護する。
+- `src/chart/databridge.h`/`.cpp`: 同じMeasurementの`readyRead()`を契機に3サンプラーを実行し、QWebChannelシグナル`phaseUpdated(QString)`と`coherenceUpdated(QString)`を追加した。
+- `web/src/main.ts`: Magnitude/Phase/CoherenceのCanvasを縦積みにし、対数周波数グリッドと系列線を共通の`drawSeries()`で描画する。Phaseは-180〜180度固定で、隣接値の差が180度を超える箇所のパスを分断する。Coherenceは0〜1固定レンジで描画する。
+- `web/src/style.css`: 単一Canvas用の`#chart`を3面共通の`.chart`へ変更し、各チャートの見出しスタイルを追加した。
+- 本Phaseの意図的な簡略化として、Phaseのスプライン後アンラップはパス分断で代替し、`PhasePlot::rotate`は0度固定、Coherenceは`Type::Normal`固定とした。Magnitude/Phase線のcoherence連動透明度も見送った。

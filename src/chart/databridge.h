@@ -20,6 +20,8 @@ public:
 
 signals:
     void magnitudeUpdated(const QString &json);
+    void phaseUpdated(const QString &json);
+    void coherenceUpdated(const QString &json);
 
 private slots:
     void onReadyRead();
@@ -27,6 +29,8 @@ private slots:
 private:
     Shared::Source m_source;
     MagnitudeSeriesSampler m_magnitudeSampler;
+    PhaseSeriesSampler m_phaseSampler;
+    CoherenceSeriesSampler m_coherenceSampler;
 };
 
 } // namespace Chart
