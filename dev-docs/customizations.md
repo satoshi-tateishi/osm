@@ -393,3 +393,21 @@
 - `src/main.cpp`: 従来のbridge/channel/view直接生成を`std::unique_ptr<Chart::JsFrontendManager>`に置き換えた。`OSM_JS_FRONTEND`未設定時の通常起動は変更していない。`OpenSoundMeter.pro`に新規2ファイルを追加した。
 - 実機でMeasurement 5個に対応する5つのWebEngineページを確認し、ソース削除と再追加で対応するページIDが消滅・新規生成されることを確認した。5パネルで約5分間クラッシュなし。本体プロセスのサンプルは約495 MiB RSS/CPU約128%であり、5枚は動作確認済みの目安とするが、リソース消費上、無制限の常用を保証する値とはしない。
 - **QML版は併存を継続する**。JS版にはpoints-per-octaveやモード/スケール/しきい値のコントロール、coherence連動透過度、QMLパネルレイアウト統合がなく、環境変数が必要な実験機能のままである。JS版が実用機能を備えた時点で改めてQML版の削除を検討する。
+
+## 方針転換: JSフロントエンドをデフォルトUIへ(QML版は廃止可)
+
+`dev-docs/js-frontend-phases.md`(Phase 6〜)
+
+- **2026-08-08、本フォークの方向性を「本家OSMからの独自派生」として明確化した**。それに伴い、上記「STOREデータ管理」節までの本家追従を前提とした改修方針から一歩進め、Phase 5完了メモに記録していた「QML版併存を継続する」判断を撤回し、**QML版は廃止してよい**方針に変更した。
+- ユーザー提示のリファレンス(Smaart v9のUI)を踏まえ、JSフロントエンドを単一ウィンドウ・3ペイン構成(左: ソースエクスプローラー、中央: 複数ソース重ね描きチャート、右: 測定設定+信号発生器)へ作り替え、段階的に**デフォルトUI**へ昇格させる方針とした(詳細は`dev-docs/js-frontend-phases.md`のPhase 6〜12を参照)。
+- これに伴い、バックエンド(`src/`)もJS版が使いやすくなるよう必要に応じて自由に改良してよいことにした。従来Phase 1〜5で重視していた「QML版との厳密な数値突き合わせ検証」は必須ゲートではなくなった(開発時の健全性チェックとしては引き続き有用なので任意で行う)。
+- **アーキテクチャ上の重要な制約**: Qt 5.15系の`qwebchannel.js`はチャンネル接続時の`init`メッセージ1回だけで`channel.objects`を構築するため、接続済みチャンネルへ新規`QObject`を動的に`registerObject()`しても既存クライアントには反映されないことを確認した。そのため単一永続ウィンドウ化にあたっては、ソースの増減に追従してQWebChannelへオブジェクトを動的登録する設計を避け、起動時に1回だけ登録する少数の固定オブジェクト(`sourceList`本体をそのまま登録、新規`SourceTreeBridge`/`SettingsBridge`、既存`Generator`本体をそのまま登録)でソースの増減をJSON文字列シグナルとして表現する設計とした。
+
+### Phase 6完了(単一ウィンドウ化 + 左ペイン読み取り専用ツリー)
+
+`src/chart/jsfrontendmanager.h/.cpp`(全面書き換え)、(新規)`src/chart/sourcetreebridge.h/.cpp`、`OpenSoundMeter.pro`、(新規)`web/src/webchannel.ts`、(新規)`web/src/sourceTree.ts`、`web/src/main.ts`、`web/src/style.css`
+
+- `JsFrontendManager`を「測定ソース1つにつき別ウィンドウ」方式から単一永続ウィンドウ方式へ書き換えた。起動時に`sourceList`本体・新規`SourceTreeBridge`(チャンネル名`sourceTree`)・既存`DataBridge`(チャンネル名を`dataBridge`から`chartData`に変更)の3つを1回だけ`QWebChannel`へ登録する。中央チャートはPhase 6時点では引き続き先頭のトップレベルMeasurement1つのみを表示する(複数ソース重ね描画はPhase 7)。
+- `SourceTreeBridge`はトップレベルの`SourceList`を読み取り専用のJSON配列として`treeChanged`シグナルで配信する(uuid/type/name/color/active)。`type`は`SourceList::toJSON()`が使うのと同じ`QObject::objectName()`をそのまま利用した。左ペインが実際の`SourceList`(QML側と同一データ)にリアルタイムに追従することを実機確認済み。
+- 実装時に当初のプロンプトから2点改善した: `preItemRemoved`ではなく`postItemRemoved`(削除完了後)を購読して削除直前の古いツリーを送る潜在バグを回避したこと、`SourceTreeBridge::requestTree()`(Q_INVOKABLE)を追加してJS接続直後に明示リクエストすることで、コンストラクタ内で(JS未接続のうちに)発火する初期`treeChanged`の取りこぼしを解消したこと。
+- `web/index.html`・`src/main.cpp`は無変更。3ペインはCSS Grid(`#app`の`grid-template-columns: 260px minmax(0, 1fr) 320px`)で実現し、DOM構築は既存方針通り`main.ts`側で行う。

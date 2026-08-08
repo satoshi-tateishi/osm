@@ -1,4 +1,6 @@
 import './style.css'
+import { renderSourceTree, type TreeItem } from './sourceTree'
+import { channelReady, connectWebChannel } from './webchannel'
 
 interface SeriesPayload {
   sourceName: string
@@ -15,28 +17,36 @@ interface SpectrogramPayload {
   levelDb: number[]
 }
 
-declare const qt: any
-declare const QWebChannel: any
-
 const XMIN = 20
 const XMAX = 20000
 const GRID_FREQS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <h1>OSM JS Frontend — Phase 4</h1>
-  <p id="status">QWebChannel接続待ち...</p>
-  <h2>Magnitude</h2>
-  <canvas id="chart-magnitude" class="chart"></canvas>
-  <h2>RTA</h2>
-  <canvas id="chart-rta" class="chart"></canvas>
-  <h2>Spectrogram</h2>
-  <canvas id="chart-spectrogram" class="chart"></canvas>
-  <h2>Phase</h2>
-  <canvas id="chart-phase" class="chart"></canvas>
-  <h2>Coherence</h2>
-  <canvas id="chart-coherence" class="chart"></canvas>
+  <div class="pane pane-left">
+    <h2>Sources</h2>
+    <p id="status">QWebChannel接続待ち...</p>
+    <div id="source-tree"></div>
+  </div>
+  <div class="pane pane-center">
+    <h2>Magnitude</h2>
+    <canvas id="chart-magnitude" class="chart"></canvas>
+    <h2>RTA</h2>
+    <canvas id="chart-rta" class="chart"></canvas>
+    <h2>Spectrogram</h2>
+    <canvas id="chart-spectrogram" class="chart"></canvas>
+    <h2>Phase</h2>
+    <canvas id="chart-phase" class="chart"></canvas>
+    <h2>Coherence</h2>
+    <canvas id="chart-coherence" class="chart"></canvas>
+  </div>
+  <div class="pane pane-right">
+    <h2>Settings</h2>
+    <p class="placeholder">Phase 8で実装予定</p>
+  </div>
 `
 const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
+const sourceTreeEl = document.querySelector<HTMLDivElement>('#source-tree')!
+const centerPaneEl = document.querySelector<HTMLDivElement>('.pane-center')!
 const canvases = {
   magnitude: document.querySelector<HTMLCanvasElement>('#chart-magnitude')!,
   rta: document.querySelector<HTMLCanvasElement>('#chart-rta')!,
@@ -46,7 +56,7 @@ const canvases = {
 }
 
 function resizeCanvas(canvas: HTMLCanvasElement, height: number) {
-  const width = Math.max(600, document.body.clientWidth - 48)
+  const width = Math.max(1, centerPaneEl.clientWidth - 32)
   canvas.width = width * devicePixelRatio
   canvas.height = height * devicePixelRatio
   canvas.style.width = `${width}px`
@@ -224,55 +234,53 @@ function drawSpectrogramRow(payload: SpectrogramPayload) {
   }
 }
 
-function connectWebChannel() {
-  if (typeof qt === 'undefined' || !qt.webChannelTransport) {
-    statusEl.textContent = 'qt.webChannelTransportが見つかりません(QWebEngineView外で開いていないか確認)'
-    return
-  }
-  new QWebChannel(qt.webChannelTransport, (channel: any) => {
-    const dataBridge = channel.objects.dataBridge
-    if (!dataBridge) {
-      statusEl.textContent = 'dataBridgeオブジェクトが見つかりません'
-      return
-    }
-    statusEl.textContent = 'QWebChannel接続済み。データ待ち...'
+connectWebChannel((message) => { statusEl.textContent = message })
 
-    dataBridge.magnitudeUpdated.connect((json: string) => {
+channelReady.then(({ sourceTree, chartData }) => {
+    sourceTree.treeChanged.connect((json: string) => {
+      try {
+        renderSourceTree(sourceTreeEl, JSON.parse(json) as TreeItem[])
+      } catch (e) {
+        console.error('treeChanged parse error', e)
+      }
+    })
+    // Signals emitted during bridge construction precede the browser's
+    // WebChannel connection, so explicitly request the initial snapshot.
+    sourceTree.requestTree()
+
+    chartData.magnitudeUpdated.connect((json: string) => {
       try {
         drawMagnitude(JSON.parse(json) as MagnitudePayload)
       } catch (e) {
         console.error('magnitudeUpdated parse error', e)
       }
     })
-    dataBridge.phaseUpdated.connect((json: string) => {
+    chartData.phaseUpdated.connect((json: string) => {
       try {
         drawPhase(JSON.parse(json) as PhasePayload)
       } catch (e) {
         console.error('phaseUpdated parse error', e)
       }
     })
-    dataBridge.coherenceUpdated.connect((json: string) => {
+    chartData.coherenceUpdated.connect((json: string) => {
       try {
         drawCoherence(JSON.parse(json) as CoherencePayload)
       } catch (e) {
         console.error('coherenceUpdated parse error', e)
       }
     })
-    dataBridge.rtaUpdated.connect((json: string) => {
+    chartData.rtaUpdated.connect((json: string) => {
       try {
         drawRTA(JSON.parse(json) as RTAPayload)
       } catch (e) {
         console.error('rtaUpdated parse error', e)
       }
     })
-    dataBridge.spectrogramRowUpdated.connect((json: string) => {
+    chartData.spectrogramRowUpdated.connect((json: string) => {
       try {
         drawSpectrogramRow(JSON.parse(json) as SpectrogramPayload)
       } catch (e) {
         console.error('spectrogramRowUpdated parse error', e)
       }
     })
-  })
-}
-
-connectWebChannel()
+})

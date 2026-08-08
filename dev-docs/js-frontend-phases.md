@@ -2,7 +2,9 @@
 
 [js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-Phase 0〜5が完了し、5チャートとトップレベルの複数Measurementに対応済み。QML版は実用機能の差を踏まえて併存を継続する。
+Phase 0〜5が完了し、5チャートとトップレベルの複数Measurementに対応済み。
+
+**方針転換(2026-08-08)**: 本フォークは本家OSMから独自の方向へ進む方針となり、**QML版は廃止してよい**判断に変わった(Phase 5完了メモの「QML版併存を継続する」という当時の判断を上書きする)。JSフロントエンドをSmaart v9風の単一ウィンドウ・3ペイン構成(左: ソースエクスプローラー、中央: 複数ソース重ね描きチャート、右: 測定設定+信号発生器)へ作り替え、段階的に**デフォルトUI**へ昇格させる。Phase 6以降がこの再設計にあたる。バックエンド(`src/`)もJS版が使いやすくなるよう必要に応じて自由に改良してよく、QML版との厳密な数値突き合わせ検証は必須ゲートではなくなった(任意の健全性チェックとしては有用)。
 
 ## 進捗状況
 
@@ -14,6 +16,13 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 | Phase 3 | RTA(Spectrum)を追加 | 完了 |
 | Phase 4 | Spectrogramを追加 | 完了 |
 | Phase 5 | 結合検証・DataBridgeライフサイクル確定・QML版の扱い判断 | 完了 |
+| Phase 6 | シングルウィンドウ化 + 左ペイン(読み取り専用ツリー) | 完了 |
+| Phase 7 | マルチソース重ね描画 + アクティブ切替 | 未着手 |
+| Phase 8 | 設定パネル(選択ソース連動、読み取り+書き込み) | 未着手 |
+| Phase 9 | 信号発生器パネル | 未着手 |
+| Phase 10 | グループのツリー再帰対応(任意・低優先) | 未着手 |
+| Phase 11 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 未着手 |
+| Phase 12 | JS版をデフォルトUIへ昇格 + QML版の扱い | 未着手 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
 
@@ -192,3 +201,159 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 - 5パネルを約5分連続動作させ、クラッシュ・フリーズなし。サンプル時の本体プロセスは約495 MiB RSS、CPU約128%(オーディオ処理と5ページ更新を含む)だった。したがって5枚は動作確認済みの目安とするが、WebEngineの負荷が小さくないため無制限の常用を保証する上限とはしない。
 - `npm run build`(型チェック含む)とQt 5.15.2のシャドウビルドが成功。`OSM_JS_FRONTEND=1`でqrc版JSページの生成を確認した。環境変数の判定は従来どおりのため、未設定時はJSウィンドウを生成しない。
 - QML版は削除しない。JS版はチャートの設定コントロール、coherence連動の透過度演出、QMLパネルレイアウトとの統合が未実装で、依然として環境変数が必要な実験機能である。機能的にQML版を代替できる段階で改めて削除を検討する。
+
+  **(2026-08-08時点での更新)**: この判断はプロジェクトの方針転換により上書きされた。本フォークは独自の方向へ進む方針となり、QML版は廃止してよい判断に変わった。以降のPhase 6〜12でJS版をSmaart v9風の3ペインUIへ作り替え、デフォルトUIへ昇格させる。
+
+---
+
+## Phase 6: シングルウィンドウ化 + 左ペイン(読み取り専用ツリー)
+
+**目的**: `JsFrontendManager`をper-source-window方式から単一永続ウィンドウ方式へ転換し、Smaart v9風の3ペインシェルを作る。中央は暫定的に先頭のトップレベルMeasurement1つのみ表示(Phase 5までと同等の見た目を維持)。左ペインに実`SourceList`ツリーを読み取り専用で表示する。
+
+**背景・アーキテクチャ方針**: Qt 5.15系の`qwebchannel.js`クライアント実装を確認した結果、`channel.objects`は接続時の`init`メッセージ1回だけで構築され、接続済みチャンネルへ新規`QObject`を`registerObject()`しても既存クライアントには反映されないことを確認した(`objectsChanged`のようなメッセージ型が存在しない)。一方、既に登録済みのオブジェクトのプロパティ値やinvokableの戻り値として`QObject*`が返る場合は動的にラップされる(`unwrapQObject`経路)。現行の「ウィンドウ=ソース単位」設計はウィンドウ生成のたびに新しいチャンネルを作るためこの制約を回避できていたが、単一永続ウィンドウ化するとこの制約が直接効いてくる。したがって、**ソースの増減に追従してQWebChannelへ新規オブジェクトを登録する設計は採用しない**。代わりに、アプリ起動時(=ウィンドウ生成時)に1回だけ登録する少数の固定オブジェクトを用意し、ソースの増減はその固定オブジェクトが発行するJSON文字列シグナル(既存`DataBridge`と同じパターン)で表現する。
+
+登録する固定オブジェクトの全体設計(Phase 6〜9で段階的に登録):
+
+| 名前 | 実体 | 役割 |
+|---|---|---|
+| `sourceList` | 既存のルート`SourceList*`をそのまま登録(新規クラス不要) | `count`/`currentFile`/`selectedIndex`/`selected`/`selectedUuid`等のQ_PROPERTYと、`removeItem(uuid)`/`moveToGroup`/`moveItem`/`save`/`load`/`addMeasurement()`/`addGroup()`等、既にuuid/QUrl引数で完結しているQ_INVOKABLEをそのまま利用。ソース選択も`SourceList::selectedIndex`/`selectedChanged`という既存の仕組みをJSとQML双方で共有する |
+| `sourceTree` | (新規)`Chart::SourceTreeBridge` | `SourceList`のうちJSから直接呼べない部分だけを薄くラップ: ツリー構造のJSONスナップショット配信(`treeChanged(QString)`)、`setActive(QUuid,bool)`、`storeItem(QUuid)`(`Shared::Source`引数の`SourceList::storeItem`をuuidルックアップ経由で呼ぶラッパー) |
+| `chartData` | 既存`Chart::DataBridge`を複数ソース対応に拡張(Phase 7) | 5チャートのJSON配信を、トップレベルMeasurement全件についてまとめて行う |
+| `settings` | (新規)`Chart::SettingsBridge`(Phase 8) | 選択中ソースの設定JSON配信+汎用`setProperty(uuid,name,value)`書き込み |
+| `generator` | 既存`Generator*`をそのまま登録(Phase 9) | qwebchannel.jsのQ_PROPERTY+NOTIFY自動バインディングをそのまま利用 |
+
+**対象ファイル**: `src/chart/jsfrontendmanager.h/.cpp`(全面書き換え。`QMap<QUuid,QWebEngineView*>`とper-uuid open/closeを廃し、単一`QWebEngineView`+単一`QWebChannel`を起動時に1回だけ生成)、(新規)`src/chart/sourcetreebridge.h/.cpp`、`OpenSoundMeter.pro`(新規ファイル追加)、`src/main.cpp`(変更小)、`web/index.html`(3ペインCSS Grid化)、`web/src/main.ts`(モジュール分割の起点)、(新規)`web/src/webchannel.ts`、(新規)`web/src/sourceTree.ts`、`web/src/style.css`
+
+**タスク**:
+- [x] `SourceTreeBridge`実装: ルート`SourceList`の`postItemAppended`/`preItemRemoved`を購読(トップレベルのみ、Group再帰はPhase 10)。`signal treeChanged(QString json)`でuuid/type/name/color/activeの配列を通知
+- [x] `JsFrontendManager`を単一ウィンドウ化。`channel->registerObject("sourceList", sourceList)`・`registerObject("sourceTree", bridge)`。既存`dataBridge`相当は暫定的に「先頭のトップレベルMeasurement」に固定バインドしたまま`"chartData"`という名前で登録(複数ソース対応はPhase 7)
+- [x] 3ペインCSS Grid雛形(`#pane-left`/`#pane-center`/`#pane-right`)。左ペインに`treeChanged`購読でツリー描画(色スウォッチ、type別ラベル、depthはこのPhaseでは常に0でよい)
+- [x] `main.ts`のQWebChannel接続処理を`webchannel.ts`へ切り出し、ソースツリー描画を`sourceTree.ts`へ切り出す(既存チャート描画ロジックは`main.ts`に残したままでよい、次Phaseで`charts.ts`へ分離)
+
+**完了条件・検証方法**: `OSM_JS_FRONTEND=1`起動で単一ウィンドウが開き、左ペインのツリーが実際のソース追加/削除/Group作成(QML側操作)と連動して更新される。中央チャートはPhase 5までと同じ見た目・数値を維持する。`OSM_JS_FRONTEND`未設定時の通常起動に影響がないこと。
+
+**依存Phase**: Phase 5完了後
+
+**完了メモ(実施結果)**:
+- Cのシャドウビルド(`qmake`/`make`)、`web`側`npm run build`(tsc型チェック含む)とも成功。`OSM_JS_FRONTEND=1`起動で単一ウィンドウ(タイトル"OSM")が1つだけ開き、Phase 5までのような複数ウィンドウは生成されないことを確認した。
+- 左ペインが実際の`SourceList`(QML側サイドバーと同一データ)をリアルタイムに反映することを実機確認した(Measurement 4件+Stored「r2」1件が、QML側の一覧と一致する色・チェック状態で表示された)。中央チャートはRTAで実データが描画され、Magnitude/Phaseは信号発生器未起動のため無信号(想定通りの挙動、Phase 6の回帰ではない)。
+- 実装はプロンプトから2点改善されている: (1) `SourceTreeBridge`が`preItemRemoved`ではなく`postItemRemoved`(実際の削除完了後に発火)を購読するようにし、削除直前の古いツリーを送ってしまう潜在バグを回避した。(2) `SourceTreeBridge::requestTree()`(Q_INVOKABLE)を新設し、JS側がWebChannel接続直後に明示的に呼び出すことで、コンストラクタ内で(JS未接続のうちに)発火してしまう初期`treeChanged`を取りこぼす問題を解消した。
+- `web/index.html`自体の構造変更は不要だった(`#app`のDOM構築を`main.ts`側で行う既存方針のまま、CSS Gridで3ペイン化)。
+- `src/main.cpp`は無変更で動作した(`JsFrontendManager`のコンストラクタ引数シグネチャを変えていないため)。
+
+---
+
+## Phase 7: マルチソース重ね描画 + アクティブ切替
+
+**目的**: `DataBridge`をマルチソース対応に拡張し、Smaart流の「1チャートに複数ソースを重ね描き」を実現する。
+
+**対象ファイル**: `src/chart/databridge.h/.cpp`(`QMap<QUuid, サンプラー一式>`へ拡張、ソース追加/削除に追従、`sourceRemoved(QString uuid)`シグナル追加)、`src/chart/seriessampler.cpp`(5種すべてのJSON生成箇所に`"uuid"`フィールド追加)、`src/chart/sourcetreebridge.h/.cpp`(`Q_INVOKABLE setActive(QUuid,bool)`追加)、`web/src/charts.ts`(新規、`main.ts`からチャート描画部を分離。チャート種別ごとに`Map<uuid,payload>`キャッシュを持ち、更新の都度そのuuid分だけ差し替えて全キャッシュを再描画)、`web/src/sourceTree.ts`(activeチェックボックス、行クリックで`sourceList.selectedIndex`を設定)
+
+**タスク**:
+- [ ] `DataBridge`: `SourceList::postItemAppended`/`preItemRemoved`(トップレベルのみ)を購読し、Measurement追加時にサンプラー一式を生成して`readyRead`接続、削除時に切断+`sourceRemoved`emit
+- [ ] サンプラーJSONに`uuid`追加(既存`sourceName`/`color`は維持)
+- [ ] JS側: chart種別ごとの`Map<uuid,payload>`実装。`sourceRemoved`受信でMapから該当uuidを削除して再描画
+- [ ] Spectrogramは選択中uuid1件のみ表示(2Dスクロールヒートマップは複数ソース重ね描画に意味がないため)。`sourceList.selectedChanged`受信でバッファをクリアして描き直す
+- [ ] ツリーのactiveチェックボックスは`Abstract::Source::active`(=`SourceTreeBridge::setActive`)をそのまま流用。非activeは描画キャッシュから除外
+
+**完了条件・検証方法**: 複数Measurementを同時に起動すると、Magnitude/Phase/Coherence/RTAへ全ソースの線が該当ソース色で重ね描画される。activeトグルで即座に表示/非表示が切り替わる。ソース削除で残留線が消える。Spectrogramは選択中ソースのみ表示される。
+
+**依存Phase**: Phase 6完了後
+
+---
+
+## Phase 8: 設定パネル(選択ソース連動、読み取り+書き込み)
+
+**目的**: 右ペインを実際の`Measurement`設定に接続する。
+
+**対象ファイル**: (新規)`src/chart/settingsbridge.h/.cpp`、`src/main.cpp`(登録)、(新規)`web/src/settingsPanel.ts`
+
+**設計**:
+```cpp
+class SettingsBridge : public QObject {
+    Q_OBJECT
+public:
+    explicit SettingsBridge(SourceList *root, QObject *parent = nullptr);
+signals:
+    void settingsChanged(const QString &json); // 選択変更時・setProperty成功時に選択中ソースの全プロパティを再送
+    void meterUpdated(const QString &json);    // level/referenceLevel/measurementPeak/referencePeak、readyRead契機
+public:
+    Q_INVOKABLE void setProperty(const QString &uuid, const QString &name, const QVariant &value);
+    Q_INVOKABLE void resetAverage(const QString &uuid);
+    Q_INVOKABLE void store(const QString &uuid);
+    Q_INVOKABLE void applyAutoGain(const QString &uuid, float reference);
+};
+```
+選択状態は既存の`SourceList::selectedChanged`/`selectedUuid()`をそのまま利用する(独自の選択管理を持たない。QML側の選択とJS側の選択が同じ状態を共有する)。
+
+**タスク**:
+- [ ] `SettingsBridge`を`SourceList::selectedChanged`に接続し、選択がMeasurementなら全Q_PROPERTY(averageType/average/filtersFrequency/gain/offset/delay/mode/tfcReferenceTime/inputFilter/dataChanel/referenceChanel/deviceId/calibration/calibrationLoaded/color/name/active/level/referenceLevel/measurementPeak/referencePeak/estimated)をJSONで`settingsChanged`配信。Group/Stored等の選択時は`{"uuid","type","editable":false}`程度の最小JSON
+- [ ] `setProperty`は`QObject::setProperty(name, value)`(Qtメタオブジェクトの汎用書き込み)を使用。成功後に`settingsChanged`を再emitしてクランプ等の副作用をJSへ反映
+- [ ] `meterUpdated`は選択中ソースの`readyRead`にフックし、軽量JSON(4フィールドのみ)で高頻度更新を`settingsChanged`と分離
+- [ ] JS側フォーム: gain/delay/mode/averageType/inputFilter等の入力欄。**値確定時(blur/change)のみ**`setProperty`送信(キー入力毎の送信は避ける = デバウンス)
+- [ ] `average`(averageType===FIFOのときのみ)/`filtersFrequency`(LPFのときのみ)/`tfcReferenceTime`(mode===TFCのときのみ)の条件表示を、既存`qml/source/MeasurementProperties.qml`の可視条件に倣ってJS側に再現
+
+**完了条件・検証方法**: ツリーでMeasurementを選択すると右ペインに実値(gain/delay/mode等)が表示され、値を編集すると実際の測定に反映される(QML版の同じパネルで同時に値が変化することで確認)。Group/Stored選択時にクラッシュせず簡易表示になる。
+
+**依存Phase**: Phase 6完了後(選択機構)。Phase 7と並行着手可
+
+---
+
+## Phase 9: 信号発生器パネル
+
+**目的**: 右ペイン下部にGenerator操作を追加する。既存の単一`Generator`インスタンスを直接登録する簡素な構成とする。
+
+**対象ファイル**: `src/generator/generator.h/.cpp`(`channelsList`変換プロパティ追加のみ、既存`channels()`/`setChannels(QList<QVariant>)`のラップ)、`src/main.cpp`(`channel->registerObject("generator", generator.get())`)、(新規)`web/src/generatorPanel.ts`
+
+**タスク**:
+- [ ] `Generator`に`Q_PROPERTY(QVariantList channelsList READ channelsList WRITE setChannelsListVariant NOTIFY channelsChangedQList)`を追加
+- [ ] `generator`を直接`registerObject`(新規ブリッジクラスは作らない)
+- [ ] JS側: `enabled`/`type`(`types`定数からドロップダウン)/`frequency`/`startFrequency`/`endFrequency`/`gain`/`duration`/`deviceId`/`evenPolarity`/`channelsList`を、qwebchannel.jsの自動プロパティバインディング(get/set/NOTIFY)でそのまま双方向接続する(手動JSON不要)
+
+**完了条件・検証方法**: JS側で`enabled`をONにすると実際に音が出る。QML版のGenerator画面と同一インスタンスを操作しているため、片方の変更がもう片方にもプロパティNOTIFY経由で反映されることを確認する。
+
+**依存Phase**: Phase 6完了後のみ(Phase 7・8とは独立、並行着手可)
+
+---
+
+## Phase 10(任意・低優先): グループのツリー再帰対応
+
+**目的**: 左ペイン・チャート重ね描画を`Source::Group`のネストまで対応させる(`Chart::SeriesesItem::connectSources`と同じ再帰パターン)。個人開発の観点で優先度は低く、Phase 6〜9完了後に必要性を見て着手判断する。
+
+**対象ファイル**: `src/chart/sourcetreebridge.h/.cpp`(Group検出時に子`sourceList()`へ再帰接続、`depth`/`parentUuid`をJSONに追加)、`src/chart/databridge.h/.cpp`(Group配下のMeasurementもサンプラー管理対象に含める)、`web/src/sourceTree.ts`(インデント描画、開閉状態)
+
+**完了条件**: Groupを作りMeasurementを移動すると、ツリーにネスト表示され、かつそのMeasurementもチャートに重ね描画される。
+
+**依存Phase**: Phase 6, 7完了後
+
+---
+
+## Phase 11(任意・低優先): 左ペインの操作(追加/Store/移動/削除)
+
+**目的**: 左ペインを完全な読み書きパネルにする。
+
+**対象ファイル**: `src/chart/sourcetreebridge.h/.cpp`(`storeItem(QUuid)`は既にPhase 6〜7で用意済み。`addMeasurement`/`addGroup`/`removeItem`/`moveToGroup`/`moveItem`は`sourceList`オブジェクトを直接呼べば足りるため新規実装は不要)、`web/src/sourceTree.ts`(追加/Store/削除ボタン、ドラッグ&ドロップは任意)
+
+**完了条件**: JS左ペインだけで、Measurement追加→Store(スナップショット化)→Groupへ移動→削除、が一通り行える。
+
+**依存Phase**: Phase 6完了後、Phase 10(Group移動を含む場合)
+
+---
+
+## Phase 12: JS版をデフォルトUIへ昇格 + QML版の扱い
+
+**目的**: Phase 6〜9で3ペインUIが実用レベルに達した段階で、JS版を`OSM_JS_FRONTEND`環境変数なしでも起動するデフォルトUIへ切り替える。QML版は即時全削除ではなく、まず「デフォルトでは使わない」状態にし、実運用で問題が出ないことを確認してから削除を検討する。
+
+**対象ファイル**: `src/main.cpp`(起動条件の反転)、`customizations.md`(判断結果の記録)、本ファイル(Phase 5完了メモの過去判断の更新)
+
+**タスク**:
+- [ ] `src/main.cpp`の起動分岐を反転し、JS版を既定の起動経路にする
+- [ ] QMLウィンドウは当面残すが、明示的なオプトイン(環境変数等)でのみ起動する形にする、もしくは完全に起動経路から外す(実装時にユーザーと相談して決定)
+- [ ] `customizations.md`・本ファイルに方針転換の経緯と結果を記録
+- [ ] JS版で不足している機能がないか一通り洗い出し、QML側コード(`qml/`, 関連C++の一部)の削除タイミングを判断する
+
+**完了条件・検証方法**: 環境変数なしでアプリを起動した際にJS版3ペインUIが開くこと。CLAUDE.mdの「終了→ビルド→起動→確認」手順で最終確認する。
+
+**依存Phase**: Phase 6〜9完了後
+
+**明示的にスコープ外とする項目(Phase 6〜12共通)**: `.osm`セッションの新規UI(既存`sourceList.save/load`をそのまま呼ぶだけなので専用UIは作らない)、CSVエクスポート、キャリブレーションファイルUI、TFC windowの詳細設定、`remote::Server/Client`連携、チャートのpointsPerOctave等の表示設定(Measurement設定ではなくChart/Plot設定のため対象外)。

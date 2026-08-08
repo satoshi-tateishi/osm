@@ -4,83 +4,44 @@
 #include <QWebEngineView>
 
 #include "databridge.h"
+#include "sourcetreebridge.h"
 #include "src/source/measurement.h"
 #include "src/sourcelist.h"
 
 namespace Chart {
 
 JsFrontendManager::JsFrontendManager(SourceList *sourceList, bool useDevServer, QObject *parent)
-    : QObject(parent), m_sourceList(sourceList), m_useDevServer(useDevServer)
+    : QObject(parent), m_sourceList(sourceList)
 {
-    connect(m_sourceList, &SourceList::postItemAppended, this, &JsFrontendManager::onItemAppended);
-    connect(m_sourceList, &SourceList::preItemRemoved, this, &JsFrontendManager::onItemRemoved);
-
+    m_dataBridge = new DataBridge(this);
+    // Phase 6 continues to chart only the first top-level Measurement.
     for (const auto &item : m_sourceList->items()) {
         if (dynamic_cast<Measurement *>(item.get())) {
-            openPanel(item);
+            m_dataBridge->setSource(item);
+            break;
         }
     }
+
+    m_sourceTreeBridge = new SourceTreeBridge(m_sourceList, this);
+
+    m_channel = new QWebChannel(this);
+    m_channel->registerObject(QStringLiteral("sourceList"), m_sourceList);
+    m_channel->registerObject(QStringLiteral("sourceTree"), m_sourceTreeBridge);
+    m_channel->registerObject(QStringLiteral("chartData"), m_dataBridge);
+
+    m_view = new QWebEngineView();
+    m_view->page()->setWebChannel(m_channel);
+    m_view->resize(1440, 900);
+    m_view->setWindowTitle(QStringLiteral("OSM"));
+    m_view->load(useDevServer
+                 ? QUrl(QStringLiteral("http://localhost:5173/"))
+                 : QUrl(QStringLiteral("qrc:/web/index.html")));
+    m_view->show();
 }
 
 JsFrontendManager::~JsFrontendManager()
 {
-    const auto views = m_panels.values();
-    for (auto *view : views) {
-        view->close();
-    }
-}
-
-void JsFrontendManager::onItemAppended(const Shared::Source &item)
-{
-    if (dynamic_cast<Measurement *>(item.get())) {
-        openPanel(item);
-    }
-}
-
-void JsFrontendManager::onItemRemoved(QUuid uuid)
-{
-    closePanel(uuid);
-}
-
-void JsFrontendManager::openPanel(const Shared::Source &source)
-{
-    const auto uuid = source->uuid();
-    if (m_panels.contains(uuid)) {
-        return;
-    }
-
-    auto *bridge = new DataBridge();
-    bridge->setSource(source);
-
-    auto *channel = new QWebChannel();
-    channel->registerObject(QStringLiteral("dataBridge"), bridge);
-
-    auto *view = new QWebEngineView();
-    view->page()->setWebChannel(channel);
-    view->resize(900, 600);
-    view->setWindowTitle(QStringLiteral("OSM JS Frontend — %1").arg(source->name()));
-    view->load(m_useDevServer
-               ? QUrl(QStringLiteral("http://localhost:5173/"))
-               : QUrl(QStringLiteral("qrc:/web/index.html")));
-    view->setAttribute(Qt::WA_DeleteOnClose);
-
-    connect(view, &QObject::destroyed, this, [this, uuid, bridge, channel]() {
-        m_panels.remove(uuid);
-        bridge->deleteLater();
-        channel->deleteLater();
-    });
-
-    view->show();
-    m_panels.insert(uuid, view);
-}
-
-void JsFrontendManager::closePanel(const QUuid &uuid)
-{
-    const auto it = m_panels.find(uuid);
-    if (it == m_panels.end()) {
-        return;
-    }
-    (*it)->close();
+    delete m_view;
 }
 
 } // namespace Chart
