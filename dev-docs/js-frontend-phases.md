@@ -2,7 +2,7 @@
 
 [js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-Phase 3(RTA/Spectrum追加)まで完了。
+Phase 4(Spectrogram追加)まで完了。
 
 ## 進捗状況
 
@@ -12,7 +12,7 @@ Phase 3(RTA/Spectrum追加)まで完了。
 | Phase 1 | Magnitude単体疎通(最小の垂直スライス) | 完了 |
 | Phase 2 | Phase・Coherenceを追加 | 完了 |
 | Phase 3 | RTA(Spectrum)を追加 | 完了 |
-| Phase 4 | Spectrogramを追加 | 未着手 |
+| Phase 4 | Spectrogramを追加 | 完了 |
 | Phase 5 | 結合検証・DataBridgeライフサイクル確定・QML版の扱い判断 | 未着手 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
@@ -156,10 +156,10 @@ Phase 3(RTA/Spectrum追加)まで完了。
 **対象ファイル**: `src/chart/opengl/spectrogramseriesrenderer.cpp`/`.h`(移植元)、`src/chart/seriessampler.h`/`.cpp`(拡張)、`src/chart/databridge.h`/`.cpp`(1行pushへの変更)、JS側(ImageDataスクロールバッファ)
 
 **タスク**:
-- [ ] Spectrogram用`SeriesSampler`実装(`module(i)`のみ、1行分のデータを返す)
-- [ ] `DataBridge`: 全履歴ではなく新規1行のみをpushするシグナルに変更
-- [ ] JS側: 51行のスクロールバッファ実装(オフスクリーン`ImageData`に対する`putImageData`/`drawImage`での1行スクロール+1行追記)
-- [ ] 新旧表示値の突き合わせ検証(該当行のみの比較でよい)
+- [x] Spectrogram用`SeriesSampler`実装(`module(i)`のみ、1行分のデータを返す)
+- [x] `DataBridge`: 全履歴ではなく新規1行のみをpushするシグナルに変更
+- [x] JS側: 51行のスクロールバッファ実装(`getImageData`/`putImageData`での1行スクロール+1行追記)
+- [x] 新旧表示値の突き合わせ検証(該当行のみの比較でよい)
 
 **完了条件・検証方法**: SpectrogramチャートがJS側で正しく描画され、QML版と数値・見た目(色マッピング含む)が一致すること
 

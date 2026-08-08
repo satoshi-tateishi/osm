@@ -372,3 +372,14 @@
 - Phase 3ではRTAPlotの既定状態に合わせ、`Mode::Line`・`Scale::DBfs`・ピーク表示なしに固定した。`Scale::SPL`/`Phon`、Bars/Lines、ピーク表示とそれらのUIコントロールは対象外。
 - TypeScript/ViteとQt本体のビルド後、qrc同梱版を実機起動してChrome DevTools ProtocolからRTA Canvasを検査した。ソース色の曲線が描画され、3秒後に画素数とチェックサムが変化したため、実オーディオデータによるリアルタイム更新まで確認できた。
 - **レビュー修正: Magnitude/RTAのデータなし表示を統一**: 全点が`null`の場合に`finiteRange()`から早期returnしていたため、両Canvasだけ背景・グリッド・ラベルも描かれない問題があった。表示レンジ`-1..1`へフォールバックして共通`drawSeries()`を必ず呼ぶようにし、Phase/Coherenceと同じ「グリッドとラベルは表示し、無効な系列線だけを描かない」状態へ統一した。実データがある場合の動的レンジは変更していない。
+
+## フロントエンドJS化 Phase 4(Spectrogram追加)の実施
+
+[js-frontend-phases.md](js-frontend-phases.md) Phase 4参照。Phase 1〜3の測定データ配信パイプラインへSpectrogramを追加し、実験的JSウィンドウを5チャート構成にした。
+
+- `src/chart/seriessampler.h`/`.cpp`: `SpectrogramSeriesSampler`を追加した。リファレンス不要の`module(i)`を使い、DC成分を除外してバンド内エネルギーを`10 * log10(value)`へ変換する。payloadは新規1行分の`{"sourceName", "frequency": [...], "levelDb": [...]}`のみで、C++側には履歴を保持しない。無音・非有限値・`-140dB`未満はQML版と同じく`-140dB`へクランプし、ヒートマップに欠損セルを作らない。
+- `src/chart/databridge.h`/`.cpp`: Measurementの`readyRead()`ごとにSpectrogramの新規1行を採取し、QWebChannelシグナル`spectrogramRowUpdated(QString)`でJSへpushする。
+- `web/src/main.ts`: Spectrogram Canvasを追加し、最大51行相当の履歴をCanvas自身に保持する。新規行を最上部へ描画する前に、既存ピクセルを`getImageData()`/`putImageData()`で1行分下へ移動するため、毎フレーム全履歴をC++から転送したり全メッシュを再構築したりしない。
+- 色はQML/OpenGL版と同じ固定しきい値`lower=-70dB`・`upper=-10dB`を用い、青(`#2196F3`)→緑(`#8BC34A`)→黄(`#FFEB3B`)→赤(`#F44336`)の3区間線形補間とした。`lower`以下は透明の代わりに不透明な黒で塗り、ピクセルスクロール後に過去行が透けて残らないようにした。
+- `canvas.width`/`height`を変更するとブラウザ仕様によりCanvas内容が消えるため、Phase 4ではウィンドウリサイズ時のSpectrogram履歴消失を許容する。リサイズ後は次の受信行から通常どおり描画を再開する。
+- TypeScript/ViteとQt本体のビルド後、開発サーバー版を実機起動してChrome DevTools ProtocolからCanvasを検査した。8秒継続後に全高が更新済みで色付き画素が存在すること、リサイズ直後に履歴が消えること、3秒後に新規行の描画が再開することを確認した。環境変数なしの通常起動でもプロセスが継続動作することを確認した。

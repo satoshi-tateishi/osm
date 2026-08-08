@@ -16,6 +16,7 @@ void DataBridge::setSource(const Shared::Source &source)
     m_phaseSampler.setSource(source);
     m_coherenceSampler.setSource(source);
     m_rtaSampler.setSource(source);
+    m_spectrogramSampler.setSource(source);
     if (m_source) {
         connect(m_source.get(), &Abstract::Source::readyRead, this, &DataBridge::onReadyRead);
     }
@@ -41,6 +42,11 @@ void DataBridge::onReadyRead()
     auto rtaJson = m_rtaSampler.sampleJson();
     if (!rtaJson.isEmpty()) {
         emit rtaUpdated(rtaJson);
+    }
+
+    auto spectrogramJson = m_spectrogramSampler.sampleJson();
+    if (!spectrogramJson.isEmpty()) {
+        emit spectrogramRowUpdated(spectrogramJson);
     }
 }
 

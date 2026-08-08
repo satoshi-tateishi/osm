@@ -80,6 +80,24 @@ private:
     Shared::Source m_source;
 };
 
+class SpectrogramSeriesSampler : private FrequencyBasedSeriesHelper
+{
+public:
+    explicit SpectrogramSeriesSampler();
+
+    void setSource(const Shared::Source &source);
+
+    // 戻り値: {"sourceName","frequency":[...],"levelDb":[...]} の1行分のJSON文字列。
+    // 無音/未接続の帯域はnullにせず-140dB(フロア)へクランプする(ヒートマップは全セルに色が必要なため)。
+    QString sampleJson(unsigned int pointsPerOctave = 12);
+
+protected:
+    const Shared::Source &source() const override;
+
+private:
+    Shared::Source m_source;
+};
+
 } // namespace Chart
 
 #endif // CHART_SERIESSAMPLER_H

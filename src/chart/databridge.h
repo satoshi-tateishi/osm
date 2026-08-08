@@ -23,6 +23,7 @@ signals:
     void phaseUpdated(const QString &json);
     void coherenceUpdated(const QString &json);
     void rtaUpdated(const QString &json);
+    void spectrogramRowUpdated(const QString &json);
 
 private slots:
     void onReadyRead();
@@ -33,6 +34,7 @@ private:
     PhaseSeriesSampler m_phaseSampler;
     CoherenceSeriesSampler m_coherenceSampler;
     RTASeriesSampler m_rtaSampler;
+    SpectrogramSeriesSampler m_spectrogramSampler;
 };
 
 } // namespace Chart

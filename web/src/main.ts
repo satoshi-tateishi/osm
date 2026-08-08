@@ -9,6 +9,11 @@ interface MagnitudePayload extends SeriesPayload { magnitudeDb: (number | null)[
 interface PhasePayload extends SeriesPayload { phaseDeg: (number | null)[] }
 interface CoherencePayload extends SeriesPayload { coherenceValue: (number | null)[] }
 interface RTAPayload extends SeriesPayload { levelDb: (number | null)[] }
+interface SpectrogramPayload {
+  sourceName: string
+  frequency: number[]
+  levelDb: number[]
+}
 
 declare const qt: any
 declare const QWebChannel: any
@@ -18,12 +23,14 @@ const XMAX = 20000
 const GRID_FREQS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <h1>OSM JS Frontend — Phase 3</h1>
+  <h1>OSM JS Frontend — Phase 4</h1>
   <p id="status">QWebChannel接続待ち...</p>
   <h2>Magnitude</h2>
   <canvas id="chart-magnitude" class="chart"></canvas>
   <h2>RTA</h2>
   <canvas id="chart-rta" class="chart"></canvas>
+  <h2>Spectrogram</h2>
+  <canvas id="chart-spectrogram" class="chart"></canvas>
   <h2>Phase</h2>
   <canvas id="chart-phase" class="chart"></canvas>
   <h2>Coherence</h2>
@@ -33,6 +40,7 @@ const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
 const canvases = {
   magnitude: document.querySelector<HTMLCanvasElement>('#chart-magnitude')!,
   rta: document.querySelector<HTMLCanvasElement>('#chart-rta')!,
+  spectrogram: document.querySelector<HTMLCanvasElement>('#chart-spectrogram')!,
   phase: document.querySelector<HTMLCanvasElement>('#chart-phase')!,
   coherence: document.querySelector<HTMLCanvasElement>('#chart-coherence')!,
 }
@@ -47,6 +55,8 @@ function resizeCanvas(canvas: HTMLCanvasElement, height: number) {
 function resizeAll() {
   resizeCanvas(canvases.magnitude, 300)
   resizeCanvas(canvases.rta, 220)
+  // canvasのサイズ変更でSpectrogramの描画履歴が消えることはPhase 4では許容する。
+  resizeCanvas(canvases.spectrogram, 220)
   resizeCanvas(canvases.phase, 220)
   resizeCanvas(canvases.coherence, 160)
 }
@@ -156,6 +166,64 @@ function drawCoherence(payload: CoherencePayload) {
     `${payload.sourceName} coherence`)
 }
 
+const SPECTROGRAM_ROWS = 51
+const SPEC_LOWER = -70
+const SPEC_UPPER = -10
+const COLOR_BLUE: [number, number, number] = [33, 150, 243]
+const COLOR_GREEN: [number, number, number] = [139, 195, 74]
+const COLOR_YELLOW: [number, number, number] = [255, 235, 59]
+const COLOR_RED: [number, number, number] = [244, 67, 54]
+
+function mixColor(a: [number, number, number], b: [number, number, number], k: number): [number, number, number] {
+  return [0, 1, 2].map((i) => a[i] + k * (b[i] - a[i])) as [number, number, number]
+}
+
+// src/chart/opengl/spectrogramseriesrenderer.cppの配色ロジックを移植。
+// lower未満は背景色(黒)に揃えて見えなくする(元のalpha=0相当。putImageDataでの
+// スクロール時に透明ピクセルだと過去の行が透けて残ってしまうため、透明ではなく
+// 不透明な黒で塗る)。
+function spectrogramColor(db: number): string {
+  if (db <= SPEC_LOWER) return 'rgb(0,0,0)'
+  const seg = (SPEC_UPPER - SPEC_LOWER) / 3
+  let rgb: [number, number, number]
+  if (seg <= 0 || db >= SPEC_UPPER) {
+    rgb = COLOR_RED
+  } else if (db < SPEC_LOWER + seg) {
+    rgb = mixColor(COLOR_BLUE, COLOR_GREEN, (db - SPEC_LOWER) / seg)
+  } else if (db < SPEC_LOWER + 2 * seg) {
+    rgb = mixColor(COLOR_GREEN, COLOR_YELLOW, (db - (SPEC_LOWER + seg)) / seg)
+  } else {
+    rgb = mixColor(COLOR_YELLOW, COLOR_RED, (db - (SPEC_LOWER + 2 * seg)) / seg)
+  }
+  return `rgb(${Math.round(rgb[0])},${Math.round(rgb[1])},${Math.round(rgb[2])})`
+}
+
+// 新しい1行を最上部に追加し、既存の内容を1行分下へスクロールする。
+// devicePixelRatioのscale変換はせず、Canvasの実ピクセル(canvas.width/height)を直接使う。
+function drawSpectrogramRow(payload: SpectrogramPayload) {
+  const canvas = canvases.spectrogram
+  const ctx = canvas.getContext('2d')!
+  const cw = canvas.width
+  const ch = canvas.height
+  const rowHeight = Math.max(1, Math.floor(ch / SPECTROGRAM_ROWS))
+
+  if (ch > rowHeight) {
+    const img = ctx.getImageData(0, 0, cw, ch - rowHeight)
+    ctx.putImageData(img, 0, rowHeight)
+  }
+
+  const n = payload.frequency.length
+  for (let i = 0; i < n; i++) {
+    const prevX = i > 0 ? xForFreq(payload.frequency[i - 1], cw) : 0
+    const curX = xForFreq(payload.frequency[i], cw)
+    const nextX = i < n - 1 ? xForFreq(payload.frequency[i + 1], cw) : cw
+    const xStart = i > 0 ? (prevX + curX) / 2 : 0
+    const xEnd = i < n - 1 ? (curX + nextX) / 2 : cw
+    ctx.fillStyle = spectrogramColor(payload.levelDb[i])
+    ctx.fillRect(xStart, 0, Math.max(1, xEnd - xStart), rowHeight)
+  }
+}
+
 function connectWebChannel() {
   if (typeof qt === 'undefined' || !qt.webChannelTransport) {
     statusEl.textContent = 'qt.webChannelTransportが見つかりません(QWebEngineView外で開いていないか確認)'
@@ -195,6 +263,13 @@ function connectWebChannel() {
         drawRTA(JSON.parse(json) as RTAPayload)
       } catch (e) {
         console.error('rtaUpdated parse error', e)
+      }
+    })
+    dataBridge.spectrogramRowUpdated.connect((json: string) => {
+      try {
+        drawSpectrogramRow(JSON.parse(json) as SpectrogramPayload)
+      } catch (e) {
+        console.error('spectrogramRowUpdated parse error', e)
       }
     })
   })

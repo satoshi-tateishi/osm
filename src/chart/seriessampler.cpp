@@ -259,4 +259,70 @@ QString RTASeriesSampler::sampleJson(unsigned int pointsPerOctave)
     return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 }
 
+SpectrogramSeriesSampler::SpectrogramSeriesSampler() : FrequencyBasedSeriesHelper()
+{
+}
+
+void SpectrogramSeriesSampler::setSource(const Shared::Source &source)
+{
+    m_source = source;
+}
+
+const Shared::Source &SpectrogramSeriesSampler::source() const
+{
+    return m_source;
+}
+
+QString SpectrogramSeriesSampler::sampleJson(unsigned int pointsPerOctave)
+{
+    if (!m_source || !m_source->active()) {
+        return QString();
+    }
+
+    constexpr float floor = -140.f;
+    QJsonArray frequency, levelDb;
+    float value = 0.f;
+    bool hasData = false;
+
+    m_source->lock();
+    if (m_source->frequencyDomainSize()) {
+        hasData = true;
+
+        auto accumulate = [this, &value](const unsigned int &i) {
+            if (i == 0) {
+                return; // DC成分を除外(spectrogramseriesrenderer.cppと同じ)
+            }
+            auto m = m_source->module(i);
+            value += m * m;
+        };
+
+        auto collected = [&value, &frequency, &levelDb](const float &bandStart, const float &bandEnd,
+                                                          const unsigned int &) {
+            auto db = 10.0 * std::log10(value);
+            // 無音/未接続でもnullにせずフロアへクランプする(Magnitude/Phase/RTAと異なり、
+            // ヒートマップは全セルに色が必要なため。spectrogramseriesrenderer.cppと同じ方針)。
+            if (!std::isfinite(db) || db < floor) {
+                db = floor;
+            }
+            frequency.append((bandStart + bandEnd) / 2.0);
+            levelDb.append(db);
+            value = 0.f;
+        };
+
+        iterate(pointsPerOctave, accumulate, collected);
+    }
+    m_source->unlock();
+
+    if (!hasData) {
+        return QString();
+    }
+
+    QJsonObject payload;
+    payload["sourceName"] = m_source->name();
+    payload["frequency"] = frequency;
+    payload["levelDb"] = levelDb;
+
+    return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+}
+
 } // namespace Chart
