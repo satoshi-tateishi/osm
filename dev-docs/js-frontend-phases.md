@@ -19,7 +19,7 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 | Phase 6 | シングルウィンドウ化 + 左ペイン(読み取り専用ツリー) | 完了 |
 | Phase 7 | マルチソース重ね描画 + アクティブ切替 | 完了 |
 | Phase 8 | 設定パネル(選択ソース連動、読み取り+書き込み) | 完了 |
-| Phase 9 | 測定ソースと保存データの表示分離(左=Session Data、右=Transfer Function) | 未着手 |
+| Phase 9 | 測定ソースと保存データの表示分離(左=Session Data、右=Transfer Function) | 完了 |
 | Phase 10 | 信号発生器パネル | 未着手 |
 | Phase 11 | グループのツリー再帰対応(任意・低優先) | 未着手 |
 | Phase 12 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 未着手 |
@@ -335,16 +335,24 @@ public:
 **対象ファイル**: `src/chart/databridge.h/.cpp`(`levelUpdated`シグナル追加)、`src/chart/settingsbridge.h/.cpp`(`meterUpdated`/`onReadyRead`削除、選択処理の簡素化)、(新規)`web/src/measurementList.ts`、`web/src/sourceTree.ts`(選択機能を削除しactiveチェックボックスのみに)、`web/src/settingsPanel.ts`(`MeterPayload`を`DataBridge::levelUpdated`由来に変更)、`web/src/main.ts`(DOM構成変更、`items`をtypeで振り分け)、`web/src/style.css`(`.measurement-row`/`.meter-bar`等追加)
 
 **タスク**:
-- [ ] `DataBridge::onReadyRead()`で`dynamic_cast<Measurement*>(source)`が成立する場合、level/referenceLevel/measurementPeak/referencePeak(非有限値はJSON null)を`levelUpdated`で配信する
-- [ ] `SettingsBridge`から`meterUpdated`シグナル・`onReadyRead`スロット・`readyRead`のconnect/disconnectを削除(`selectSource`/`onSourceRemoved`を簡素化)
-- [ ] `web/src/measurementList.ts`新規実装: Measurementのみの一覧をレベルメーター付きで描画。行クリックで`charts.setSpectrogramSource`と`settings.selectSource`の両方を呼ぶ(Phase 7〜8で左ペインが担っていた選択機能をここに移す)。アクティブチェックボックスは`sourceTree.setActive`をそのまま呼ぶ
-- [ ] `web/src/sourceTree.ts`から`onSelect`コールバック・行クリックの`selected`処理を削除し、`onToggleActive`のみを残す(左ペインは選択不可のフラットな保存データ一覧になる)
-- [ ] `web/src/main.ts`: `sourceTree.treeChanged`受信時に`items`を`type === "Measurement"`で振り分け、左ペイン(`renderSourceTree`、Session Data見出し)と右ペイン新規リスト(`renderMeasurementList`、Transfer Function見出し)へそれぞれ渡す。`chartData.levelUpdated`を購読し、一覧側の該当行メーターを更新しつつ、選択中uuidと一致すれば設定フォーム側のメーター表示も更新する
-- [ ] 見出し文言の変更: 左`Sources`→`Session Data`、右ペインに`Transfer Function`見出しを追加(`Settings`見出しは既存のまま設定フォームの上に残す)
+- [x] `DataBridge::onReadyRead()`で`dynamic_cast<Measurement*>(source)`が成立する場合、level/referenceLevel/measurementPeak/referencePeak(非有限値はJSON null)を`levelUpdated`で配信する
+- [x] `SettingsBridge`から`meterUpdated`シグナル・`onReadyRead`スロット・`readyRead`のconnect/disconnectを削除(`selectSource`/`onSourceRemoved`を簡素化)
+- [x] `web/src/measurementList.ts`新規実装: Measurementのみの一覧をレベルメーター付きで描画。行クリックで`charts.setSpectrogramSource`と`settings.selectSource`の両方を呼ぶ(Phase 7〜8で左ペインが担っていた選択機能をここに移す)。アクティブチェックボックスは`sourceTree.setActive`をそのまま呼ぶ
+- [x] `web/src/sourceTree.ts`から`onSelect`コールバック・行クリックの`selected`処理を削除し、`onToggleActive`のみを残す(左ペインは選択不可のフラットな保存データ一覧になる)
+- [x] `web/src/main.ts`: `sourceTree.treeChanged`受信時に`items`を`type === "Measurement"`で振り分け、左ペイン(`renderSourceTree`、Session Data見出し)と右ペイン新規リスト(`renderMeasurementList`、Transfer Function見出し)へそれぞれ渡す。`chartData.levelUpdated`を購読し、一覧側の該当行メーターを更新しつつ、選択中uuidと一致すれば設定フォーム側のメーター表示も更新する
+- [x] 見出し文言の変更: 左`Sources`→`Session Data`、右ペインに`Transfer Function`見出しを追加(`Settings`見出しは既存のまま設定フォームの上に残す)
 
 **完了条件・検証方法**: 左ペインにMeasurementが一切表示されず、Stored/Groupのみが並ぶこと。右ペインにアクティブなMeasurementが一覧表示され、無音でない入力に対してレベルメーターが継続的に動くこと。右ペインの一覧から行を選択すると、その下(または別セクション)に設定フォームが表示され、Phase 8の書き込み機能がそのまま動作すること。Spectrogramの選択もMeasurement一覧のクリックから機能すること。
 
 **依存Phase**: Phase 6〜8完了後
+
+**完了メモ(実施結果)**:
+- `SourceTreeBridge`の配信形式は変更せず、Web側でトップレベル項目をMeasurementとStored/Groupへ振り分けた。左ペインは`Session Data`として保存データのみを表示し、行選択を廃止してactiveチェックだけを残した。右ペインは`Transfer Function`としてMeasurement一覧を常時表示し、行クリックをSpectrogramとSettingsの共通選択経路へ移した。
+- 全Measurementを既に購読している`DataBridge`へ`levelUpdated`を追加し、uuidとM/Rのlevel・peakを非有限値=nullで配信する。`SettingsBridge::meterUpdated`と選択ソースへの二重`readyRead`接続は削除し、一覧と選択中Settingsメーターの双方が同じ配信を使う構成に一本化した。
+- 初回実装後のフィードバックを反映し、Measurement 1件につき上段M(測定入力)・下段R(リファレンス入力)の2本のメーターを表示するよう修正した。`SettingsBridge`は入力専用`audio::DeviceModel`を保持し、選択Measurementの`deviceId`、`dataChanel`、`referenceChanel`、入力デバイス一覧、選択デバイスのチャンネル名一覧(+`Loop`)を設定JSONへ含める。SettingsへInput device、Measurement channel (M)、Reference channel (R)の各ドロップダウンを追加した。
+- `audio::DeviceInfo::Id`は実体が`QString`の型エイリアスであり、`deviceId`は汎用`setProperty`で安全に書き込めることを確認した。Web側では`deviceId`だけを文字列のまま送り、チャンネル番号は数値として送る。デバイス変更直後の再スナップショットでチャンネル候補も新しいデバイスへ更新される。
+- `npm run build`(TypeScript型チェック+Vite)、Qt 5.15.2 x64/OpenGLのシャドウビルドが成功した。qrc版をCDPで検証し、Stored 2件とMeasurement 4件の左右分離、アクティブMeasurement 3件の独立メーター更新、M/R 2行表示、設定選択、Session Data行の非選択、チャンネル0→1→0の往復、入力デバイス変更時の候補`1/Loop`→`1/2/Loop`→`1/Loop`更新、コンソールエラー0件を確認した。環境変数なしの通常UIも短時間継続起動した。
+- Storedのactiveをチャートへ重ねるrecall表示は、`DataBridge`がMeasurementだけをサンプリングする現状では別のデータ経路が必要なため、当初の方針どおり本Phaseのスコープ外とした。
 
 ---
 

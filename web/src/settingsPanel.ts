@@ -15,9 +15,15 @@ export interface SettingsPayload {
   tfcReferenceTime?: number
   inputFilter?: number
   polarity?: boolean
+  deviceId?: string
+  dataChanel?: number
+  referenceChanel?: number
+  channelNames?: string[]
+  devices?: { id: string; name: string }[]
 }
 
 export interface MeterPayload {
+  uuid: string
   level: number | null
   referenceLevel: number | null
   measurementPeak: number | null
@@ -79,6 +85,17 @@ export function renderSettingsPanel(
     <div class="settings-field"><label>Input filter</label>
       <select data-prop="inputFilter">${options(INPUT_FILTER_LABELS, payload.inputFilter)}</select>
     </div>
+    <div class="settings-field"><label>Input device</label>
+      <select data-prop="deviceId">${(payload.devices ?? []).map((device) =>
+        `<option value="${escapeAttr(device.id)}" ${device.id === payload.deviceId ? 'selected' : ''}>${escapeHtml(device.name)}</option>`
+      ).join('')}</select>
+    </div>
+    <div class="settings-field"><label>Measurement channel (M)</label>
+      <select data-prop="dataChanel">${options(payload.channelNames ?? [], payload.dataChanel)}</select>
+    </div>
+    <div class="settings-field"><label>Reference channel (R)</label>
+      <select data-prop="referenceChanel">${options(payload.channelNames ?? [], payload.referenceChanel)}</select>
+    </div>
     <div class="settings-actions">
       <button data-action="reset-average">Reset Average</button>
       <button data-action="store">Store</button>
@@ -89,9 +106,12 @@ export function renderSettingsPanel(
   container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-prop]').forEach((el) => {
     el.addEventListener('change', () => {
       const name = el.dataset.prop!
-      const value = el instanceof HTMLSelectElement || (el as HTMLInputElement).type === 'number'
-        ? Number(el.value)
-        : el.value
+      const isStringProp = name === 'name' || name === 'deviceId'
+      const value = el instanceof HTMLSelectElement
+        ? (isStringProp ? el.value : Number(el.value))
+        : (el as HTMLInputElement).type === 'number'
+          ? Number(el.value)
+          : el.value
       callbacks.onChange(name, value)
     })
   })

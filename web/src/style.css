@@ -49,15 +49,10 @@ body {
   padding: 0.3rem 0.2rem;
   border-radius: 4px;
   font-size: 0.85rem;
-  cursor: pointer;
 }
 
 .tree-row:hover {
   background: rgba(255, 255, 255, 0.08);
-}
-
-.tree-row.selected {
-  background: rgba(33, 150, 243, 0.25);
 }
 
 .tree-active {
@@ -84,6 +79,84 @@ body {
 
 .tree-inactive {
   opacity: 0.45;
+}
+
+.measurement-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.4rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.measurement-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.measurement-row.selected {
+  background: rgba(33, 150, 243, 0.25);
+}
+
+.measurement-row-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.measurement-active {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.measurement-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meter-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-left: 1.4rem;
+}
+
+.meter-label {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.meter-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  width: 0%;
+  background: #4caf50;
+  transition: width 0.08s linear;
+}
+
+.meter-fill.meter-clip {
+  background: #f44336;
+}
+
+.meter-text {
+  flex: 0 0 auto;
+  width: 3.5rem;
+  text-align: right;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .chart {

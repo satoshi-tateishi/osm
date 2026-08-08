@@ -1,5 +1,6 @@
 #include "settingsbridge.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -12,24 +13,17 @@ namespace Chart {
 SettingsBridge::SettingsBridge(SourceList *sourceList, QObject *parent)
     : QObject(parent), m_sourceList(sourceList)
 {
+    m_deviceModel = new audio::DeviceModel(this);
+    m_deviceModel->setScope(audio::DeviceModel::InputOnly);
+
     connect(m_sourceList, &SourceList::preItemRemoved,
             this, &SettingsBridge::onSourceRemoved);
 }
 
 void SettingsBridge::selectSource(const QString &uuidString)
 {
-    if (m_selectedSource) {
-        disconnect(m_selectedSource.get(), &Abstract::Source::readyRead,
-                   this, &SettingsBridge::onReadyRead);
-    }
-
     m_selectedUuid = QUuid(uuidString);
     m_selectedSource = m_sourceList->getByUUid(m_selectedUuid);
-
-    if (m_selectedSource) {
-        connect(m_selectedSource.get(), &Abstract::Source::readyRead,
-                this, &SettingsBridge::onReadyRead);
-    }
     emitSettings();
 }
 
@@ -115,27 +109,11 @@ void SettingsBridge::applyAutoGain(const QString &uuidString, float reference)
     emitSettings();
 }
 
-void SettingsBridge::onReadyRead()
-{
-    auto *measurement = dynamic_cast<Measurement *>(m_selectedSource.get());
-    if (!measurement) {
-        return;
-    }
-    QJsonObject payload;
-    payload["level"] = measurement->level();
-    payload["referenceLevel"] = measurement->referenceLevel();
-    payload["measurementPeak"] = measurement->measurementPeak();
-    payload["referencePeak"] = measurement->referencePeak();
-    emit meterUpdated(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
-}
-
 void SettingsBridge::onSourceRemoved(QUuid uuid)
 {
     if (uuid != m_selectedUuid) {
         return;
     }
-    disconnect(m_selectedSource.get(), &Abstract::Source::readyRead,
-               this, &SettingsBridge::onReadyRead);
     m_selectedUuid = QUuid();
     m_selectedSource.reset();
     emitSettings();
@@ -170,6 +148,28 @@ void SettingsBridge::emitSettings()
         payload["tfcReferenceTime"] = measurement->tfcReferenceTime();
         payload["inputFilter"] = static_cast<int>(measurement->inputFilter());
         payload["polarity"] = measurement->polarity();
+
+        payload["deviceId"] = measurement->deviceId();
+        payload["dataChanel"] = static_cast<int>(measurement->dataChanel());
+        payload["referenceChanel"] = static_cast<int>(measurement->referenceChanel());
+
+        QJsonArray channelNames;
+        const auto deviceIndex = m_deviceModel->indexOf(measurement->deviceId());
+        for (const auto &name : m_deviceModel->channelNames(deviceIndex)) {
+            channelNames.append(name);
+        }
+        channelNames.append(QStringLiteral("Loop"));
+        payload["channelNames"] = channelNames;
+
+        QJsonArray devices;
+        for (int i = 0; i < m_deviceModel->rowCount(); ++i) {
+            QJsonObject device;
+            device["id"] = m_deviceModel->deviceId(i);
+            device["name"] = m_deviceModel->data(
+                m_deviceModel->index(i), audio::DeviceModel::NameRole).toString();
+            devices.append(device);
+        }
+        payload["devices"] = devices;
     }
 
     emit settingsChanged(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));

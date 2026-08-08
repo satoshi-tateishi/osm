@@ -28,6 +28,7 @@ signals:
     void coherenceUpdated(const QString &json);
     void rtaUpdated(const QString &json);
     void spectrogramRowUpdated(const QString &json);
+    void levelUpdated(const QString &json);
     void sourceRemoved(const QString &uuid);
 
 private slots:

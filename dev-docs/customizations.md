@@ -431,3 +431,14 @@
 - 選択中Measurementのlevel/referenceLevel/measurementPeak/referencePeakは`readyRead`契機の軽量`meterUpdated`へ分離した。未初期化・非有限値がJSONのnullになる場合はJS側で「—」を表示し、高頻度の`toFixed()`例外を防止する。
 - Averaging Depth、Gain、Offset、Delay、Mode、TFC reference time、Average type、Filter frequency、Input filter、Reset Average、Storeを対象とした。`deviceId`はC++アクセサの独自型、dataChanel/referenceChanelはチャンネル一覧UI、calibrationはファイルダイアログが必要なため、このPhaseでは意図的に対象外とした。
 - TypeScript/ViteとQt本体のビルド後、CDP経由で数値・enum書き込み、条件表示、メーター、Reset Average、Store、Stored選択を実機検証した。コンソールエラーは発生せず、`OSM_JS_FRONTEND`未設定の通常UIも継続起動した。
+
+### Phase 9完了(測定ソースと保存データの表示分離 + 2ch入力表示)
+
+`src/chart/databridge.h/.cpp`、`src/chart/settingsbridge.h/.cpp`、(新規)`web/src/measurementList.ts`、`web/src/sourceTree.ts`、`web/src/settingsPanel.ts`、`web/src/main.ts`、`web/src/style.css`
+
+- 左ペインを`Session Data`へ改称してStored/Groupだけを表示し、右ペインにMeasurement専用の`Transfer Function`一覧を追加した。振り分けは`SourceTreeBridge`を変更せず、既存JSONの`type`をWeb側で判定する。保存データ側の行クリック選択は廃止し、Measurement行クリックへSpectrogramとSettingsの選択を移した。
+- 全トップレベルMeasurementを購読済みの`DataBridge`へ`levelUpdated(uuid, M/R level・peakのJSON)`を追加した。選択中1件だけを購読していた`SettingsBridge::meterUpdated`は削除し、Measurement一覧と選択中Settingsメーターの更新元を`DataBridge`へ一本化して二重の`readyRead`接続を避けた。
+- Transfer Functionの各Measurement行は、上段M(測定入力)・下段R(リファレンス入力)の2本のレベルメーターを持つ。どちらも対応levelとpeakを使い、非有限値は「—」、peakが-3dBを超える場合はクリップ色で表示する。
+- `SettingsBridge`が入力専用の`audio::DeviceModel`を保持し、選択Measurementの入力デバイス一覧と現在デバイスのチャンネル名(+内部ループバック`Loop`)をJSON配信する。SettingsにInput device、Measurement channel (M)、Reference channel (R)を追加し、デバイス変更後の設定再配信でチャンネル候補を更新する。
+- Phase 8で対象外理由としていたデバイスIDの型について再確認し、`audio::DeviceInfo::Id`は実際には`QString`の型エイリアスで、`Measurement::deviceId`のQ_PROPERTY宣言と一致することが分かった。そのため専用セッターは不要で、汎用`QObject::setProperty`を使用する。Web側は`deviceId`を文字列のまま、`dataChanel`/`referenceChanel`を数値として送る。
+- Storedのactiveチェックをチャートへ反映するrecall表示は、Measurement用`DataBridge`とは別のデータ経路が必要なため本Phaseでは扱わない。

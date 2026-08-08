@@ -1,5 +1,9 @@
 #include "databridge.h"
 
+#include <cmath>
+#include <QJsonDocument>
+#include <QJsonObject>
+
 #include "abstract/source.h"
 #include "src/source/measurement.h"
 #include "src/sourcelist.h"
@@ -95,6 +99,19 @@ void DataBridge::onReadyRead()
     auto spectrogramJson = samplers->spectrogram.sampleJson();
     if (!spectrogramJson.isEmpty()) {
         emit spectrogramRowUpdated(spectrogramJson);
+    }
+
+    if (auto *measurement = dynamic_cast<Measurement *>(source)) {
+        auto finiteOrNull = [](float value) {
+            return std::isfinite(value) ? QJsonValue(value) : QJsonValue();
+        };
+        QJsonObject payload;
+        payload["uuid"] = source->uuid().toString();
+        payload["level"] = finiteOrNull(measurement->level());
+        payload["referenceLevel"] = finiteOrNull(measurement->referenceLevel());
+        payload["measurementPeak"] = finiteOrNull(measurement->measurementPeak());
+        payload["referencePeak"] = finiteOrNull(measurement->referencePeak());
+        emit levelUpdated(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
     }
 }
 

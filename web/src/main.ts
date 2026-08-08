@@ -1,12 +1,13 @@
 import './style.css'
 import * as charts from './charts'
+import { renderMeasurementList, updateMeasurementMeter, type MeasurementItem } from './measurementList'
 import { renderSourceTree, type TreeItem } from './sourceTree'
 import { renderSettingsPanel, renderMeter, type SettingsPayload, type MeterPayload } from './settingsPanel'
 import { channelReady, connectWebChannel } from './webchannel'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="pane pane-left">
-    <h2>Sources</h2>
+    <h2>Session Data</h2>
     <p id="status">QWebChannel接続待ち...</p>
     <div id="source-tree"></div>
   </div>
@@ -23,12 +24,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <canvas id="chart-coherence" class="chart"></canvas>
   </div>
   <div class="pane pane-right">
+    <h2>Transfer Function</h2>
+    <div id="measurement-list"></div>
     <h2>Settings</h2>
     <div id="settings-panel"><p class="placeholder">左のリストからソースを選択してください</p></div>
   </div>
 `
 const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
 const sourceTreeEl = document.querySelector<HTMLDivElement>('#source-tree')!
+const measurementListEl = document.querySelector<HTMLDivElement>('#measurement-list')!
 const settingsPanelEl = document.querySelector<HTMLDivElement>('#settings-panel')!
 const centerPaneEl = document.querySelector<HTMLDivElement>('.pane-center')!
 const canvases: charts.ChartCanvases = {
@@ -91,7 +95,13 @@ channelReady.then(({ sourceTree, chartData, settings }) => {
       console.error('treeChanged parse error', error)
       return
     }
-    renderSourceTree(sourceTreeEl, items, {
+    const measurementItems: MeasurementItem[] = items.filter((item) => item.type === 'Measurement')
+    const sessionItems = items.filter((item) => item.type !== 'Measurement')
+
+    renderSourceTree(sourceTreeEl, sessionItems, {
+      onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
+    })
+    renderMeasurementList(measurementListEl, measurementItems, {
       onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
       onSelect: (uuid) => {
         charts.setSpectrogramSource(uuid, canvases.spectrogram)
@@ -105,8 +115,19 @@ channelReady.then(({ sourceTree, chartData, settings }) => {
   settings.settingsChanged.connect((json: string) => {
     try { renderPanel(JSON.parse(json) as SettingsPayload) } catch (error) { console.error('settingsChanged parse error', error) }
   })
-  settings.meterUpdated.connect((json: string) => {
-    try { renderMeter(JSON.parse(json) as MeterPayload) } catch (error) { console.error('meterUpdated parse error', error) }
+
+  chartData.levelUpdated.connect((json: string) => {
+    let payload: MeterPayload
+    try {
+      payload = JSON.parse(json) as MeterPayload
+    } catch (error) {
+      console.error('levelUpdated parse error', error)
+      return
+    }
+    updateMeasurementMeter(measurementListEl, payload.uuid, payload)
+    if (payload.uuid === currentSettingsUuid) {
+      renderMeter(payload)
+    }
   })
 
   chartData.magnitudeUpdated.connect((json: string) => {

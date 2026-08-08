@@ -6,6 +6,7 @@
 #include <QUuid>
 #include <QVariant>
 
+#include "audio/devicemodel.h"
 #include "shared/source_shared.h"
 
 class SourceList;
@@ -32,10 +33,8 @@ public:
 
 signals:
     void settingsChanged(const QString &json);
-    void meterUpdated(const QString &json);
 
 private slots:
-    void onReadyRead();
     void onSourceRemoved(QUuid uuid);
 
 private:
@@ -44,6 +43,7 @@ private:
     SourceList *m_sourceList;
     QUuid m_selectedUuid;
     Shared::Source m_selectedSource;
+    audio::DeviceModel *m_deviceModel;
 };
 
 } // namespace Chart
