@@ -5,6 +5,7 @@ export interface ChannelObjects {
   sourceList: any
   sourceTree: any
   chartData: any
+  settings: any
 }
 
 let resolveObjects: (objects: ChannelObjects) => void
@@ -18,12 +19,12 @@ export function connectWebChannel(onStatus: (message: string) => void) {
     return
   }
   new QWebChannel(qt.webChannelTransport, (channel: any) => {
-    const { sourceList, sourceTree, chartData } = channel.objects
-    if (!sourceList || !sourceTree || !chartData) {
-      onStatus('必要なチャンネルオブジェクト(sourceList/sourceTree/chartData)が見つかりません')
+    const { sourceList, sourceTree, chartData, settings } = channel.objects
+    if (!sourceList || !sourceTree || !chartData || !settings) {
+      onStatus('必要なチャンネルオブジェクト(sourceList/sourceTree/chartData/settings)が見つかりません')
       return
     }
     onStatus('QWebChannel接続済み')
-    resolveObjects({ sourceList, sourceTree, chartData })
+    resolveObjects({ sourceList, sourceTree, chartData, settings })
   })
 }

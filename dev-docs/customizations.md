@@ -419,5 +419,15 @@
 - `DataBridge`を先頭Measurement 1件への固定バインドから、トップレベルMeasurement全件を自己管理する方式へ変更した。`SourceList::postItemAppended`/`preItemRemoved`を購読し、ソースごとのMagnitude/Phase/Coherence/RTA/Spectrogramサンプラーを動的に生成・破棄する。削除時は`readyRead`接続も明示的に解除し、`sourceRemoved(uuid)`をJSへ送る。
 - 5種のサンプラーpayloadへ`uuid`を追加した。JS側は新規`charts.ts`で線グラフ種別ごとに`Map<uuid, payload>`を保持し、Magnitude/RTA/Phase/Coherenceを同じcanvasへソース色で重ね描画する。凡例には各ソースの色と名前を表示し、active変更やソース削除時はキャッシュを使って即時に再描画する。
 - 左ペインへactiveチェックボックスを追加し、Phase 6で前倒し実装済みの`SourceTreeBridge::setActive(QString,bool)`へ接続した。ツリー更新からactiveなuuid集合を作るため、非active化した系列は次の`readyRead`を待たずに消える。
-- Spectrogramは複数系列を重ねず、ツリー行クリックで選んだ1ソースだけを表示する。Phase 7では選択をJSローカル状態に限定し、切替時にスクロール履歴をクリアする。`SourceList::selectedChanged`との全体同期は、右ペインを実装するPhase 8で`SettingsBridge`と一緒に導入して二重実装を避ける。
+- Spectrogramは複数系列を重ねず、ツリー行クリックで選んだ1ソースだけを表示する。選択はJSローカル状態とし、切替時にスクロール履歴をクリアする。Phase 8の設定パネルも同じクリックコールバックを流用するため、Spectrogramと設定パネルで別々の選択状態は持たない。
 - `npm run build`(TypeScript型チェックを含む)とQtのシャドウビルドが成功した。GUI上での複数ソース操作と長時間安定性は実機回帰確認項目として残る。
+
+### Phase 8完了(選択ソース連動の設定パネル)
+
+`src/chart/settingsbridge.h/.cpp`、`src/chart/jsfrontendmanager.h/.cpp`、`OpenSoundMeter.pro`、(新規)`web/src/settingsPanel.ts`、`web/src/main.ts`、`web/src/webchannel.ts`、`web/src/style.css`
+
+- 固定WebChannelオブジェクト`settings`として`Chart::SettingsBridge`を追加した。左ペインクリック時にPhase 7のSpectrogram切替と同じuuidを`selectSource()`へ渡し、選択中Measurementのname/active/平均/Gain/Offset/Delay/Mode/TFC/Input Filter/PolarityをJSONスナップショットで配信する。Stored/Group等は`editable:false`として安全に簡易表示し、選択中ソースの削除時は`preItemRemoved`で接続とshared_ptrを解放して未選択表示へ戻す。
+- JSフォームからは値確定時の`change`だけを書き込み、書き込み直後の再スナップショットで実際の値へ同期する。通常プロパティは汎用`QObject::setProperty`を使う。Qt 5.15実機ではQVariantのintからenumへの自動変換が機能しなかったため、mode/averageType/filtersFrequency/inputFilterだけは`SettingsBridge`の専用Q_INVOKABLEセッターへフォールバックした。
+- 選択中Measurementのlevel/referenceLevel/measurementPeak/referencePeakは`readyRead`契機の軽量`meterUpdated`へ分離した。未初期化・非有限値がJSONのnullになる場合はJS側で「—」を表示し、高頻度の`toFixed()`例外を防止する。
+- Averaging Depth、Gain、Offset、Delay、Mode、TFC reference time、Average type、Filter frequency、Input filter、Reset Average、Storeを対象とした。`deviceId`はC++アクセサの独自型、dataChanel/referenceChanelはチャンネル一覧UI、calibrationはファイルダイアログが必要なため、このPhaseでは意図的に対象外とした。
+- TypeScript/ViteとQt本体のビルド後、CDP経由で数値・enum書き込み、条件表示、メーター、Reset Average、Store、Stored選択を実機検証した。コンソールエラーは発生せず、`OSM_JS_FRONTEND`未設定の通常UIも継続起動した。

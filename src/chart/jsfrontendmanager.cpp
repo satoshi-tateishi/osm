@@ -4,6 +4,7 @@
 #include <QWebEngineView>
 
 #include "databridge.h"
+#include "settingsbridge.h"
 #include "sourcetreebridge.h"
 #include "src/sourcelist.h"
 
@@ -14,11 +15,13 @@ JsFrontendManager::JsFrontendManager(SourceList *sourceList, bool useDevServer, 
 {
     m_dataBridge = new DataBridge(m_sourceList, this);
     m_sourceTreeBridge = new SourceTreeBridge(m_sourceList, this);
+    m_settingsBridge = new SettingsBridge(m_sourceList, this);
 
     m_channel = new QWebChannel(this);
     m_channel->registerObject(QStringLiteral("sourceList"), m_sourceList);
     m_channel->registerObject(QStringLiteral("sourceTree"), m_sourceTreeBridge);
     m_channel->registerObject(QStringLiteral("chartData"), m_dataBridge);
+    m_channel->registerObject(QStringLiteral("settings"), m_settingsBridge);
 
     m_view = new QWebEngineView();
     m_view->page()->setWebChannel(m_channel);

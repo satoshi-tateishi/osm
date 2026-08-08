@@ -1,6 +1,7 @@
 import './style.css'
 import * as charts from './charts'
 import { renderSourceTree, type TreeItem } from './sourceTree'
+import { renderSettingsPanel, renderMeter, type SettingsPayload, type MeterPayload } from './settingsPanel'
 import { channelReady, connectWebChannel } from './webchannel'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -23,11 +24,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   </div>
   <div class="pane pane-right">
     <h2>Settings</h2>
-    <p class="placeholder">Phase 8で実装予定</p>
+    <div id="settings-panel"><p class="placeholder">左のリストからソースを選択してください</p></div>
   </div>
 `
 const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
 const sourceTreeEl = document.querySelector<HTMLDivElement>('#source-tree')!
+const settingsPanelEl = document.querySelector<HTMLDivElement>('#settings-panel')!
 const centerPaneEl = document.querySelector<HTMLDivElement>('.pane-center')!
 const canvases: charts.ChartCanvases = {
   magnitude: document.querySelector<HTMLCanvasElement>('#chart-magnitude')!,
@@ -56,7 +58,31 @@ resizeAll()
 
 connectWebChannel((message) => { statusEl.textContent = message })
 
-channelReady.then(({ sourceTree, chartData }) => {
+channelReady.then(({ sourceTree, chartData, settings }) => {
+  let currentSettingsUuid: string | null = null
+
+  function renderPanel(payload: SettingsPayload) {
+    currentSettingsUuid = payload.uuid
+    renderSettingsPanel(settingsPanelEl, payload, {
+      onChange: (name, value) => {
+        const enumSetters: Record<string, string> = {
+          mode: 'setMode',
+          averageType: 'setAverageType',
+          filtersFrequency: 'setFiltersFrequency',
+          inputFilter: 'setInputFilter',
+        }
+        const setter = enumSetters[name]
+        if (setter) {
+          settings[setter](payload.uuid, value)
+        } else {
+          settings.setProperty(payload.uuid, name, value)
+        }
+      },
+      onResetAverage: () => settings.resetAverage(payload.uuid),
+      onStore: () => settings.store(payload.uuid),
+    })
+  }
+
   sourceTree.treeChanged.connect((json: string) => {
     let items: TreeItem[]
     try {
@@ -67,11 +93,21 @@ channelReady.then(({ sourceTree, chartData }) => {
     }
     renderSourceTree(sourceTreeEl, items, {
       onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
-      onSelect: (uuid) => charts.setSpectrogramSource(uuid, canvases.spectrogram),
+      onSelect: (uuid) => {
+        charts.setSpectrogramSource(uuid, canvases.spectrogram)
+        settings.selectSource(uuid)
+      },
     })
     charts.setActiveUuids(new Set(items.filter((item) => item.active).map((item) => item.uuid)), canvases)
   })
   sourceTree.requestTree()
+
+  settings.settingsChanged.connect((json: string) => {
+    try { renderPanel(JSON.parse(json) as SettingsPayload) } catch (error) { console.error('settingsChanged parse error', error) }
+  })
+  settings.meterUpdated.connect((json: string) => {
+    try { renderMeter(JSON.parse(json) as MeterPayload) } catch (error) { console.error('meterUpdated parse error', error) }
+  })
 
   chartData.magnitudeUpdated.connect((json: string) => {
     try { charts.updateMagnitude(canvases.magnitude, JSON.parse(json)) } catch (error) { console.error('magnitudeUpdated parse error', error) }
@@ -90,5 +126,8 @@ channelReady.then(({ sourceTree, chartData }) => {
   })
   chartData.sourceRemoved.connect((uuid: string) => {
     charts.removeSource(uuid, canvases)
+    if (currentSettingsUuid === uuid) {
+      renderPanel({ uuid: null })
+    }
   })
 })

@@ -11,6 +11,7 @@ namespace Chart {
 
 class DataBridge;
 class SourceTreeBridge;
+class SettingsBridge;
 
 // Owns the single persistent JS frontend window and its fixed WebChannel
 // object set. Dynamic source state is transported by bridge signals.
@@ -27,6 +28,7 @@ private:
     QWebEngineView *m_view;
     DataBridge *m_dataBridge;
     SourceTreeBridge *m_sourceTreeBridge;
+    SettingsBridge *m_settingsBridge;
 };
 
 } // namespace Chart

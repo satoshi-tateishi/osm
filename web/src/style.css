@@ -99,3 +99,52 @@ h2 {
   color: rgba(255, 255, 255, 0.85);
   margin: 1rem 0 0.25rem;
 }
+
+.settings-field {
+  margin-bottom: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.settings-field label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.settings-field input,
+.settings-field select {
+  background: #111;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 0.3rem 0.4rem;
+  font-size: 0.85rem;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.8rem 0;
+}
+
+.settings-actions button {
+  background: #222;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.settings-actions button:hover {
+  background: #333;
+}
+
+.settings-meter {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 0.5rem;
+}

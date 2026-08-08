@@ -18,11 +18,12 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 | Phase 5 | 結合検証・DataBridgeライフサイクル確定・QML版の扱い判断 | 完了 |
 | Phase 6 | シングルウィンドウ化 + 左ペイン(読み取り専用ツリー) | 完了 |
 | Phase 7 | マルチソース重ね描画 + アクティブ切替 | 完了 |
-| Phase 8 | 設定パネル(選択ソース連動、読み取り+書き込み) | 未着手 |
-| Phase 9 | 信号発生器パネル | 未着手 |
-| Phase 10 | グループのツリー再帰対応(任意・低優先) | 未着手 |
-| Phase 11 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 未着手 |
-| Phase 12 | JS版をデフォルトUIへ昇格 + QML版の扱い | 未着手 |
+| Phase 8 | 設定パネル(選択ソース連動、読み取り+書き込み) | 完了 |
+| Phase 9 | 測定ソースと保存データの表示分離(左=Session Data、右=Transfer Function) | 未着手 |
+| Phase 10 | 信号発生器パネル | 未着手 |
+| Phase 11 | グループのツリー再帰対応(任意・低優先) | 未着手 |
+| Phase 12 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 未着手 |
+| Phase 13 | JS版をデフォルトUIへ昇格 + QML版の扱い | 未着手 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
 
@@ -216,10 +217,10 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 
 | 名前 | 実体 | 役割 |
 |---|---|---|
-| `sourceList` | 既存のルート`SourceList*`をそのまま登録(新規クラス不要) | `count`/`currentFile`/`selectedIndex`/`selected`/`selectedUuid`等のQ_PROPERTYと、`removeItem(uuid)`/`moveToGroup`/`moveItem`/`save`/`load`/`addMeasurement()`/`addGroup()`等、既にuuid/QUrl引数で完結しているQ_INVOKABLEをそのまま利用。ソース選択も`SourceList::selectedIndex`/`selectedChanged`という既存の仕組みをJSとQML双方で共有する |
+| `sourceList` | 既存のルート`SourceList*`をそのまま登録(新規クラス不要) | `count`/`currentFile`等のQ_PROPERTYと、`removeItem(uuid)`/`moveToGroup`/`moveItem`/`save`/`load`/`addMeasurement()`/`addGroup()`等、既にuuid/QUrl引数で完結しているQ_INVOKABLEをそのまま利用 |
 | `sourceTree` | (新規)`Chart::SourceTreeBridge` | `SourceList`のうちJSから直接呼べない部分だけを薄くラップ: ツリー構造のJSONスナップショット配信(`treeChanged(QString)`)、`setActive(QUuid,bool)`、`storeItem(QUuid)`(`Shared::Source`引数の`SourceList::storeItem`をuuidルックアップ経由で呼ぶラッパー) |
 | `chartData` | 既存`Chart::DataBridge`を複数ソース対応に拡張(Phase 7) | 5チャートのJSON配信を、トップレベルMeasurement全件についてまとめて行う |
-| `settings` | (新規)`Chart::SettingsBridge`(Phase 8) | 選択中ソースの設定JSON配信+汎用`setProperty(uuid,name,value)`書き込み |
+| `settings` | (新規)`Chart::SettingsBridge`(Phase 8) | 左ペインクリックによるJSローカル選択中ソースの設定JSON配信+汎用`setProperty(uuid,name,value)`およびenum専用セッターによる書き込み |
 | `generator` | 既存`Generator*`をそのまま登録(Phase 9) | qwebchannel.jsのQ_PROPERTY+NOTIFY自動バインディングをそのまま利用 |
 
 **対象ファイル**: `src/chart/jsfrontendmanager.h/.cpp`(全面書き換え。`QMap<QUuid,QWebEngineView*>`とper-uuid open/closeを廃し、単一`QWebEngineView`+単一`QWebChannel`を起動時に1回だけ生成)、(新規)`src/chart/sourcetreebridge.h/.cpp`、`OpenSoundMeter.pro`(新規ファイル追加)、`src/main.cpp`(変更小)、`web/index.html`(3ペインCSS Grid化)、`web/src/main.ts`(モジュール分割の起点)、(新規)`web/src/webchannel.ts`、(新規)`web/src/sourceTree.ts`、`web/src/style.css`
@@ -253,7 +254,7 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 - [x] `DataBridge`: `SourceList::postItemAppended`/`preItemRemoved`(トップレベルのみ)を購読し、Measurement追加時にサンプラー一式を生成して`readyRead`接続、削除時に切断+`sourceRemoved`emit
 - [x] サンプラーJSONに`uuid`追加(既存`sourceName`/`color`は維持)
 - [x] JS側: chart種別ごとの`Map<uuid,payload>`実装。`sourceRemoved`受信でMapから該当uuidを削除して再描画
-- [x] Spectrogramは選択中uuid1件のみ表示(2Dスクロールヒートマップは複数ソース重ね描画に意味がないため)。ツリー行クリックによるJSローカル選択でバッファをクリアし、次回データから描き直す。`SourceList::selectedChanged`とのアプリ全体での同期はPhase 8で`SettingsBridge`と一緒に導入する
+- [x] Spectrogramは選択中uuid1件のみ表示(2Dスクロールヒートマップは複数ソース重ね描画に意味がないため)。ツリー行クリックによるJSローカル選択でバッファをクリアし、次回データから描き直す。Phase 8の設定パネルも同じクリックコールバックへ配線し、独立した選択状態を増やさない
 - [x] ツリーのactiveチェックボックスは`Abstract::Source::active`(=`SourceTreeBridge::setActive`)をそのまま流用。非activeは描画キャッシュから除外
 
 **完了条件・検証方法**: 複数Measurementを同時に起動すると、Magnitude/Phase/Coherence/RTAへ全ソースの線が該当ソース色で重ね描画される。activeトグルで即座に表示/非表示が切り替わる。ソース削除で残留線が消える。Spectrogramは選択中ソースのみ表示される。
@@ -273,7 +274,7 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 
 **目的**: 右ペインを実際の`Measurement`設定に接続する。
 
-**対象ファイル**: (新規)`src/chart/settingsbridge.h/.cpp`、`src/main.cpp`(登録)、(新規)`web/src/settingsPanel.ts`
+**対象ファイル**: (新規)`src/chart/settingsbridge.h/.cpp`、`src/chart/jsfrontendmanager.h/.cpp`・`OpenSoundMeter.pro`(登録・ビルド対象追加)、(新規)`web/src/settingsPanel.ts`、`web/src/main.ts`・`web/src/webchannel.ts`・`web/src/style.css`
 
 **設計**:
 ```cpp
@@ -285,28 +286,69 @@ signals:
     void settingsChanged(const QString &json); // 選択変更時・setProperty成功時に選択中ソースの全プロパティを再送
     void meterUpdated(const QString &json);    // level/referenceLevel/measurementPeak/referencePeak、readyRead契機
 public:
+    Q_INVOKABLE void selectSource(const QString &uuid);
     Q_INVOKABLE void setProperty(const QString &uuid, const QString &name, const QVariant &value);
+    Q_INVOKABLE void setMode(const QString &uuid, int value);
+    Q_INVOKABLE void setAverageType(const QString &uuid, int value);
+    Q_INVOKABLE void setFiltersFrequency(const QString &uuid, int value);
+    Q_INVOKABLE void setInputFilter(const QString &uuid, int value);
     Q_INVOKABLE void resetAverage(const QString &uuid);
     Q_INVOKABLE void store(const QString &uuid);
     Q_INVOKABLE void applyAutoGain(const QString &uuid, float reference);
 };
 ```
-選択状態は既存の`SourceList::selectedChanged`/`selectedUuid()`をそのまま利用する(独自の選択管理を持たない。QML側の選択とJS側の選択が同じ状態を共有する)。
+選択状態はPhase 7のSpectrogramと同じ左ペイン行クリックによるJSローカル選択を流用し、同じ`onSelect`から`setSpectrogramSource(uuid)`と`SettingsBridge::selectSource(uuid)`を呼ぶ。`SourceList::selectedUuid()`はplain C++メソッドでJSから直接呼べないため、`SourceList::selectedIndex`との同期は行わない。
 
 **タスク**:
-- [ ] `SettingsBridge`を`SourceList::selectedChanged`に接続し、選択がMeasurementなら全Q_PROPERTY(averageType/average/filtersFrequency/gain/offset/delay/mode/tfcReferenceTime/inputFilter/dataChanel/referenceChanel/deviceId/calibration/calibrationLoaded/color/name/active/level/referenceLevel/measurementPeak/referencePeak/estimated)をJSONで`settingsChanged`配信。Group/Stored等の選択時は`{"uuid","type","editable":false}`程度の最小JSON
-- [ ] `setProperty`は`QObject::setProperty(name, value)`(Qtメタオブジェクトの汎用書き込み)を使用。成功後に`settingsChanged`を再emitしてクランプ等の副作用をJSへ反映
-- [ ] `meterUpdated`は選択中ソースの`readyRead`にフックし、軽量JSON(4フィールドのみ)で高頻度更新を`settingsChanged`と分離
-- [ ] JS側フォーム: gain/delay/mode/averageType/inputFilter等の入力欄。**値確定時(blur/change)のみ**`setProperty`送信(キー入力毎の送信は避ける = デバウンス)
-- [ ] `average`(averageType===FIFOのときのみ)/`filtersFrequency`(LPFのときのみ)/`tfcReferenceTime`(mode===TFCのときのみ)の条件表示を、既存`qml/source/MeasurementProperties.qml`の可視条件に倣ってJS側に再現
+- [x] 左ペイン行クリックをSpectrogram切替と`SettingsBridge::selectSource`の両方へ配線。選択がMeasurementならPhase 8対象プロパティ(name/active/averageType/average/averageTickSeconds/filtersFrequency/gain/offset/delay/mode/tfcReferenceTime/inputFilter/polarity)を`settingsChanged`で配信し、Group/Stored等は`{"uuid","type","editable":false}`の最小JSONを配信
+- [x] 通常値は`QObject::setProperty(name, value)`で書き込み、直後に`settingsChanged`を再emitしてクランプ等の副作用をJSへ反映。実機でQt 5.15のint→enum自動変換が機能しないことを確認したため、mode/averageType/filtersFrequency/inputFilterには`Q_INVOKABLE`専用セッターを追加
+- [x] `meterUpdated`は選択中ソースの`readyRead`にフックし、軽量JSON(4フィールドのみ)で高頻度更新を`settingsChanged`と分離。未初期化値がJSONのnullになる場合はJSで「—」表示
+- [x] JS側フォーム: name/gain/offset/delay/mode/averageType/average/filtersFrequency/inputFilter/tfcReferenceTimeを、値確定時の`change`イベントだけで送信。Reset Average・Storeも実装
+- [x] `average`(averageType===FIFOのときのみ)/`filtersFrequency`(LPFのときのみ)/`tfcReferenceTime`(mode===TFCのときのみ)の条件表示を再現
 
 **完了条件・検証方法**: ツリーでMeasurementを選択すると右ペインに実値(gain/delay/mode等)が表示され、値を編集すると実際の測定に反映される(QML版の同じパネルで同時に値が変化することで確認)。Group/Stored選択時にクラッシュせず簡易表示になる。
 
 **依存Phase**: Phase 6完了後(選択機構)。Phase 7と並行着手可
 
+**完了メモ(実施結果)**:
+- `SettingsBridge`を固定WebChannelオブジェクト`settings`として登録し、選択変更時の設定スナップショットと`readyRead`ごとの軽量メーターを分離配信した。選択中ソースの`preItemRemoved`では接続とshared_ptrを解放して未選択スナップショットへ戻す。`deviceId`、データ/リファレンスチャンネル、キャリブレーションは型変換や専用UIが必要なため意図的に対象外とした。
+- CDP経由の実機操作で、Gainの書き込みと再スナップショット、mode/averageType/filtersFrequency/inputFilterの専用セッターによる往復、TFC/FIFO/LPF条件表示、Reset Average、StoreによるStored追加、Stored選択時の非対応表示を確認した。Store検証用に追加した項目はUUIDを限定して削除した。
+- `web`の`npm run build`(TypeScript型チェック+Vite本番ビルド)とQt 5.15.2 x64/OpenGLのシャドウビルド(`qmake`+`make`)が成功した。CDPのRuntime/Log監視でも修正版のコンソールエラーは発生せず、`OSM_JS_FRONTEND`未設定の通常UIも継続起動した。
+
 ---
 
-## Phase 9: 信号発生器パネル
+## Phase 9: 測定ソースと保存データの表示分離(左=Session Data、右=Transfer Function)
+
+**目的**: 現在は左ペインにMeasurement(ライブ測定)とStored/Group(保存データ)が混在して表示されており、ユーザーテストで「混乱しやすい」という指摘を受けた。Smaart v9の実UIに合わせ、**左ペイン=保存データ専用のSession Dataツリー**、**右ペイン=ライブ測定ソース一覧(レベルメーター付き)+選択中ソースの設定フォーム**、に分離する。
+
+**背景**: Smaartは左に過去セッションの保存データツリー、右に現在稼働中の測定ソース(TFエンジン)をレベルメーターと共に常時表示するリストを持つ。現状のJS版は`SourceTreeBridge`が返すフラットな配列(Measurement/Stored/Groupが型を問わず混在)をそのまま1つのリストとして左ペインに描画しているため、この区別が付かない。
+
+**設計方針**:
+- `SourceTreeBridge`自体は変更しない(トップレベル全種別を`treeChanged`で配信する既存の挙動を維持)。JS側で`type === "Measurement"`かどうかにより2つのリストへ振り分ける(バックエンドに新しい分岐ロジックを持たせず、既存のtype情報を使い切る)。
+- 右ペインの測定ソース一覧に**全アクティブMeasurementのレベルメーターを常時表示**するため、`DataBridge`(既に全トップレベルMeasurementの`readyRead`を購読済み)に`levelUpdated(QString json)`シグナルを追加し、`{uuid, level, referenceLevel, measurementPeak, referencePeak}`を配信する。
+- `SettingsBridge`が選択中ソース1つ分だけ購読していた`meterUpdated`/`onReadyRead`は**削除**する(`DataBridge::levelUpdated`をuuidでフィルタして同じ表示に使えば二重の`readyRead`購読が不要になるため)。
+- 左ペイン(`sourceTree.ts`)からは行クリックによる選択機能を削除し、アクティブ切替チェックボックスのみ残す(選択はMeasurement一覧側の役割に一本化)。
+- ヘッダー文言をSmaartに合わせる: 左ペイン`Sources`→`Session Data`、右ペインの新規リストは`Transfer Function`(既存の`Settings`見出しはそのまま設定フォームの上に残す)。
+
+**明示的にスコープ外(今回は扱わない)**: Storedの「active」チェックボックスをONにした際にチャートへ重ね描画する機能(いわゆるrecall表示)は、そもそも`DataBridge`がMeasurementのみをサンプリング対象としており未実装のまま。今回は表示エリアの分離のみを行い、Stored recallの描画対応は別Phaseで扱う。
+
+**対象ファイル**: `src/chart/databridge.h/.cpp`(`levelUpdated`シグナル追加)、`src/chart/settingsbridge.h/.cpp`(`meterUpdated`/`onReadyRead`削除、選択処理の簡素化)、(新規)`web/src/measurementList.ts`、`web/src/sourceTree.ts`(選択機能を削除しactiveチェックボックスのみに)、`web/src/settingsPanel.ts`(`MeterPayload`を`DataBridge::levelUpdated`由来に変更)、`web/src/main.ts`(DOM構成変更、`items`をtypeで振り分け)、`web/src/style.css`(`.measurement-row`/`.meter-bar`等追加)
+
+**タスク**:
+- [ ] `DataBridge::onReadyRead()`で`dynamic_cast<Measurement*>(source)`が成立する場合、level/referenceLevel/measurementPeak/referencePeak(非有限値はJSON null)を`levelUpdated`で配信する
+- [ ] `SettingsBridge`から`meterUpdated`シグナル・`onReadyRead`スロット・`readyRead`のconnect/disconnectを削除(`selectSource`/`onSourceRemoved`を簡素化)
+- [ ] `web/src/measurementList.ts`新規実装: Measurementのみの一覧をレベルメーター付きで描画。行クリックで`charts.setSpectrogramSource`と`settings.selectSource`の両方を呼ぶ(Phase 7〜8で左ペインが担っていた選択機能をここに移す)。アクティブチェックボックスは`sourceTree.setActive`をそのまま呼ぶ
+- [ ] `web/src/sourceTree.ts`から`onSelect`コールバック・行クリックの`selected`処理を削除し、`onToggleActive`のみを残す(左ペインは選択不可のフラットな保存データ一覧になる)
+- [ ] `web/src/main.ts`: `sourceTree.treeChanged`受信時に`items`を`type === "Measurement"`で振り分け、左ペイン(`renderSourceTree`、Session Data見出し)と右ペイン新規リスト(`renderMeasurementList`、Transfer Function見出し)へそれぞれ渡す。`chartData.levelUpdated`を購読し、一覧側の該当行メーターを更新しつつ、選択中uuidと一致すれば設定フォーム側のメーター表示も更新する
+- [ ] 見出し文言の変更: 左`Sources`→`Session Data`、右ペインに`Transfer Function`見出しを追加(`Settings`見出しは既存のまま設定フォームの上に残す)
+
+**完了条件・検証方法**: 左ペインにMeasurementが一切表示されず、Stored/Groupのみが並ぶこと。右ペインにアクティブなMeasurementが一覧表示され、無音でない入力に対してレベルメーターが継続的に動くこと。右ペインの一覧から行を選択すると、その下(または別セクション)に設定フォームが表示され、Phase 8の書き込み機能がそのまま動作すること。Spectrogramの選択もMeasurement一覧のクリックから機能すること。
+
+**依存Phase**: Phase 6〜8完了後
+
+---
+
+## Phase 10: 信号発生器パネル
 
 **目的**: 右ペイン下部にGenerator操作を追加する。既存の単一`Generator`インスタンスを直接登録する簡素な構成とする。
 
@@ -323,7 +365,7 @@ public:
 
 ---
 
-## Phase 10(任意・低優先): グループのツリー再帰対応
+## Phase 11(任意・低優先): グループのツリー再帰対応
 
 **目的**: 左ペイン・チャート重ね描画を`Source::Group`のネストまで対応させる(`Chart::SeriesesItem::connectSources`と同じ再帰パターン)。個人開発の観点で優先度は低く、Phase 6〜9完了後に必要性を見て着手判断する。
 
@@ -335,7 +377,7 @@ public:
 
 ---
 
-## Phase 11(任意・低優先): 左ペインの操作(追加/Store/移動/削除)
+## Phase 12(任意・低優先): 左ペインの操作(追加/Store/移動/削除)
 
 **目的**: 左ペインを完全な読み書きパネルにする。
 
@@ -343,13 +385,13 @@ public:
 
 **完了条件**: JS左ペインだけで、Measurement追加→Store(スナップショット化)→Groupへ移動→削除、が一通り行える。
 
-**依存Phase**: Phase 6完了後、Phase 10(Group移動を含む場合)
+**依存Phase**: Phase 6完了後、Phase 11(Group移動を含む場合)
 
 ---
 
-## Phase 12: JS版をデフォルトUIへ昇格 + QML版の扱い
+## Phase 13: JS版をデフォルトUIへ昇格 + QML版の扱い
 
-**目的**: Phase 6〜9で3ペインUIが実用レベルに達した段階で、JS版を`OSM_JS_FRONTEND`環境変数なしでも起動するデフォルトUIへ切り替える。QML版は即時全削除ではなく、まず「デフォルトでは使わない」状態にし、実運用で問題が出ないことを確認してから削除を検討する。
+**目的**: Phase 6〜10で3ペインUIが実用レベルに達した段階で、JS版を`OSM_JS_FRONTEND`環境変数なしでも起動するデフォルトUIへ切り替える。QML版は即時全削除ではなく、まず「デフォルトでは使わない」状態にし、実運用で問題が出ないことを確認してから削除を検討する。
 
 **対象ファイル**: `src/main.cpp`(起動条件の反転)、`customizations.md`(判断結果の記録)、本ファイル(Phase 5完了メモの過去判断の更新)
 
@@ -361,6 +403,6 @@ public:
 
 **完了条件・検証方法**: 環境変数なしでアプリを起動した際にJS版3ペインUIが開くこと。CLAUDE.mdの「終了→ビルド→起動→確認」手順で最終確認する。
 
-**依存Phase**: Phase 6〜9完了後
+**依存Phase**: Phase 6〜10完了後
 
-**明示的にスコープ外とする項目(Phase 6〜12共通)**: `.osm`セッションの新規UI(既存`sourceList.save/load`をそのまま呼ぶだけなので専用UIは作らない)、CSVエクスポート、キャリブレーションファイルUI、TFC windowの詳細設定、`remote::Server/Client`連携、チャートのpointsPerOctave等の表示設定(Measurement設定ではなくChart/Plot設定のため対象外)。
+**明示的にスコープ外とする項目(Phase 6〜13共通)**: `.osm`セッションの新規UI(既存`sourceList.save/load`をそのまま呼ぶだけなので専用UIは作らない)、CSVエクスポート、キャリブレーションファイルUI、TFC windowの詳細設定、`remote::Server/Client`連携、チャートのpointsPerOctave等の表示設定(Measurement設定ではなくChart/Plot設定のため対象外)、Stored recallのチャート描画対応(Phase 9で「今回は扱わない」と明記)。

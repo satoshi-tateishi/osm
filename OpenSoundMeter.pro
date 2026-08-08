@@ -27,6 +27,7 @@ SOURCES += src/main.cpp \
     src/chart/databridge.cpp \
     src/chart/jsfrontendmanager.cpp \
     src/chart/sourcetreebridge.cpp \
+    src/chart/settingsbridge.cpp \
     src/chart/groupdelayplot.cpp \
     src/chart/levelobject.cpp \
     src/chart/levelplot.cpp \
@@ -191,6 +192,7 @@ HEADERS += \
     src/chart/databridge.h \
     src/chart/jsfrontendmanager.h \
     src/chart/sourcetreebridge.h \
+    src/chart/settingsbridge.h \
     src/chart/groupdelayplot.h \
     src/chart/levelobject.h \
     src/chart/levelplot.h \
