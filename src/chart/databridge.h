@@ -1,22 +1,26 @@
 #ifndef CHART_DATABRIDGE_H
 #define CHART_DATABRIDGE_H
 
+#include <QMap>
 #include <QObject>
+#include <QUuid>
 
-#include "abstract/source.h"
 #include "seriessampler.h"
+#include "shared/source_shared.h"
+
+class SourceList;
 
 namespace Chart {
 
-// 1インスタンスは1ソースのデータを配信する。複数ソース時の生成・破棄は
-// JsFrontendManagerがJSウィンドウのライフサイクルに合わせて管理する。
+// トップレベルのMeasurement全件についてサンプラー一式を保持し、各ソースの
+// readyRead()のたびに該当ソース分のJSONを配信する(複数ウィンドウではなく
+// 単一のchartDataオブジェクトが全ソース分を多重化して流す設計)。
 class DataBridge : public QObject
 {
     Q_OBJECT
 public:
-    explicit DataBridge(QObject *parent = nullptr);
-
-    void setSource(const Shared::Source &source);
+    explicit DataBridge(SourceList *sourceList, QObject *parent = nullptr);
+    ~DataBridge() override;
 
 signals:
     void magnitudeUpdated(const QString &json);
@@ -24,17 +28,24 @@ signals:
     void coherenceUpdated(const QString &json);
     void rtaUpdated(const QString &json);
     void spectrogramRowUpdated(const QString &json);
+    void sourceRemoved(const QString &uuid);
 
 private slots:
+    void onItemAppended(const Shared::Source &item);
+    void onItemRemoved(QUuid uuid);
     void onReadyRead();
 
 private:
-    Shared::Source m_source;
-    MagnitudeSeriesSampler m_magnitudeSampler;
-    PhaseSeriesSampler m_phaseSampler;
-    CoherenceSeriesSampler m_coherenceSampler;
-    RTASeriesSampler m_rtaSampler;
-    SpectrogramSeriesSampler m_spectrogramSampler;
+    struct SamplerSet {
+        MagnitudeSeriesSampler magnitude;
+        PhaseSeriesSampler phase;
+        CoherenceSeriesSampler coherence;
+        RTASeriesSampler rta;
+        SpectrogramSeriesSampler spectrogram;
+    };
+
+    SourceList *m_sourceList;
+    QMap<QUuid, SamplerSet *> m_samplers;
 };
 
 } // namespace Chart

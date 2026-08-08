@@ -17,7 +17,7 @@ public:
 
     void setSource(const Shared::Source &source);
 
-    // 戻り値: {"sourceName","color","frequency":[...],"magnitudeDb":[...]} のJSON文字列。
+    // 戻り値: {"uuid","sourceName","color","frequency":[...],"magnitudeDb":[...]} のJSON文字列。
     // ソースが無効/データ無しの場合は空文字列を返す。
     QString sampleJson(unsigned int pointsPerOctave = 12);
 
@@ -35,7 +35,7 @@ public:
 
     void setSource(const Shared::Source &source);
 
-    // 戻り値: {"sourceName","color","frequency":[...],"phaseDeg":[...]} のJSON文字列。
+    // 戻り値: {"uuid","sourceName","color","frequency":[...],"phaseDeg":[...]} のJSON文字列。
     QString sampleJson(unsigned int pointsPerOctave = 12);
 
 protected:
@@ -52,7 +52,7 @@ public:
 
     void setSource(const Shared::Source &source);
 
-    // 戻り値: {"sourceName","color","frequency":[...],"coherenceValue":[...]} のJSON文字列。
+    // 戻り値: {"uuid","sourceName","color","frequency":[...],"coherenceValue":[...]} のJSON文字列。
     QString sampleJson(unsigned int pointsPerOctave = 12);
 
 protected:
@@ -69,7 +69,7 @@ public:
 
     void setSource(const Shared::Source &source);
 
-    // 戻り値: {"sourceName","color","frequency":[...],"levelDb":[...]} のJSON文字列。
+    // 戻り値: {"uuid","sourceName","color","frequency":[...],"levelDb":[...]} のJSON文字列。
     // RTAPlotの既定値(pointsPerOctave=6、Mode::Line、Scale::DBfs)に固定。
     QString sampleJson(unsigned int pointsPerOctave = 6);
 
@@ -87,7 +87,7 @@ public:
 
     void setSource(const Shared::Source &source);
 
-    // 戻り値: {"sourceName","frequency":[...],"levelDb":[...]} の1行分のJSON文字列。
+    // 戻り値: {"uuid","sourceName","frequency":[...],"levelDb":[...]} の1行分のJSON文字列。
     // 無音/未接続の帯域はnullにせず-140dB(フロア)へクランプする(ヒートマップは全セルに色が必要なため)。
     QString sampleJson(unsigned int pointsPerOctave = 12);
 

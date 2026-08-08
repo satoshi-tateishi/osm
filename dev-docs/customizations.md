@@ -411,3 +411,13 @@
 - `SourceTreeBridge`はトップレベルの`SourceList`を読み取り専用のJSON配列として`treeChanged`シグナルで配信する(uuid/type/name/color/active)。`type`は`SourceList::toJSON()`が使うのと同じ`QObject::objectName()`をそのまま利用した。左ペインが実際の`SourceList`(QML側と同一データ)にリアルタイムに追従することを実機確認済み。
 - 実装時に当初のプロンプトから2点改善した: `preItemRemoved`ではなく`postItemRemoved`(削除完了後)を購読して削除直前の古いツリーを送る潜在バグを回避したこと、`SourceTreeBridge::requestTree()`(Q_INVOKABLE)を追加してJS接続直後に明示リクエストすることで、コンストラクタ内で(JS未接続のうちに)発火する初期`treeChanged`の取りこぼしを解消したこと。
 - `web/index.html`・`src/main.cpp`は無変更。3ペインはCSS Grid(`#app`の`grid-template-columns: 260px minmax(0, 1fr) 320px`)で実現し、DOM構築は既存方針通り`main.ts`側で行う。
+
+### Phase 7完了(マルチソース重ね描画 + アクティブ切替)
+
+`src/chart/databridge.h/.cpp`、`src/chart/seriessampler.cpp`、`src/chart/jsfrontendmanager.cpp`、(新規)`web/src/charts.ts`、`web/src/main.ts`、`web/src/sourceTree.ts`、`web/src/style.css`
+
+- `DataBridge`を先頭Measurement 1件への固定バインドから、トップレベルMeasurement全件を自己管理する方式へ変更した。`SourceList::postItemAppended`/`preItemRemoved`を購読し、ソースごとのMagnitude/Phase/Coherence/RTA/Spectrogramサンプラーを動的に生成・破棄する。削除時は`readyRead`接続も明示的に解除し、`sourceRemoved(uuid)`をJSへ送る。
+- 5種のサンプラーpayloadへ`uuid`を追加した。JS側は新規`charts.ts`で線グラフ種別ごとに`Map<uuid, payload>`を保持し、Magnitude/RTA/Phase/Coherenceを同じcanvasへソース色で重ね描画する。凡例には各ソースの色と名前を表示し、active変更やソース削除時はキャッシュを使って即時に再描画する。
+- 左ペインへactiveチェックボックスを追加し、Phase 6で前倒し実装済みの`SourceTreeBridge::setActive(QString,bool)`へ接続した。ツリー更新からactiveなuuid集合を作るため、非active化した系列は次の`readyRead`を待たずに消える。
+- Spectrogramは複数系列を重ねず、ツリー行クリックで選んだ1ソースだけを表示する。Phase 7では選択をJSローカル状態に限定し、切替時にスクロール履歴をクリアする。`SourceList::selectedChanged`との全体同期は、右ペインを実装するPhase 8で`SettingsBridge`と一緒に導入して二重実装を避ける。
+- `npm run build`(TypeScript型チェックを含む)とQtのシャドウビルドが成功した。GUI上での複数ソース操作と長時間安定性は実機回帰確認項目として残る。

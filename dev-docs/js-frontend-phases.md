@@ -17,7 +17,7 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 | Phase 4 | Spectrogramを追加 | 完了 |
 | Phase 5 | 結合検証・DataBridgeライフサイクル確定・QML版の扱い判断 | 完了 |
 | Phase 6 | シングルウィンドウ化 + 左ペイン(読み取り専用ツリー) | 完了 |
-| Phase 7 | マルチソース重ね描画 + アクティブ切替 | 未着手 |
+| Phase 7 | マルチソース重ね描画 + アクティブ切替 | 完了 |
 | Phase 8 | 設定パネル(選択ソース連動、読み取り+書き込み) | 未着手 |
 | Phase 9 | 信号発生器パネル | 未着手 |
 | Phase 10 | グループのツリー再帰対応(任意・低優先) | 未着手 |
@@ -247,18 +247,25 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 
 **目的**: `DataBridge`をマルチソース対応に拡張し、Smaart流の「1チャートに複数ソースを重ね描き」を実現する。
 
-**対象ファイル**: `src/chart/databridge.h/.cpp`(`QMap<QUuid, サンプラー一式>`へ拡張、ソース追加/削除に追従、`sourceRemoved(QString uuid)`シグナル追加)、`src/chart/seriessampler.cpp`(5種すべてのJSON生成箇所に`"uuid"`フィールド追加)、`src/chart/sourcetreebridge.h/.cpp`(`Q_INVOKABLE setActive(QUuid,bool)`追加)、`web/src/charts.ts`(新規、`main.ts`からチャート描画部を分離。チャート種別ごとに`Map<uuid,payload>`キャッシュを持ち、更新の都度そのuuid分だけ差し替えて全キャッシュを再描画)、`web/src/sourceTree.ts`(activeチェックボックス、行クリックで`sourceList.selectedIndex`を設定)
+**対象ファイル**: `src/chart/databridge.h/.cpp`(`QMap<QUuid, サンプラー一式>`へ拡張、ソース追加/削除に追従、`sourceRemoved(QString uuid)`シグナル追加)、`src/chart/seriessampler.cpp`(5種すべてのJSON生成箇所に`"uuid"`フィールド追加)、`web/src/charts.ts`(新規、`main.ts`からチャート描画部を分離。チャート種別ごとに`Map<uuid,payload>`キャッシュを持ち、更新の都度そのuuid分だけ差し替えて全キャッシュを再描画)、`web/src/sourceTree.ts`(activeチェックボックス、行クリックによるJSローカル選択)。`SourceTreeBridge::setActive(QString,bool)`はPhase 6で前倒し実装済みのため、本Phaseでは変更しない
 
 **タスク**:
-- [ ] `DataBridge`: `SourceList::postItemAppended`/`preItemRemoved`(トップレベルのみ)を購読し、Measurement追加時にサンプラー一式を生成して`readyRead`接続、削除時に切断+`sourceRemoved`emit
-- [ ] サンプラーJSONに`uuid`追加(既存`sourceName`/`color`は維持)
-- [ ] JS側: chart種別ごとの`Map<uuid,payload>`実装。`sourceRemoved`受信でMapから該当uuidを削除して再描画
-- [ ] Spectrogramは選択中uuid1件のみ表示(2Dスクロールヒートマップは複数ソース重ね描画に意味がないため)。`sourceList.selectedChanged`受信でバッファをクリアして描き直す
-- [ ] ツリーのactiveチェックボックスは`Abstract::Source::active`(=`SourceTreeBridge::setActive`)をそのまま流用。非activeは描画キャッシュから除外
+- [x] `DataBridge`: `SourceList::postItemAppended`/`preItemRemoved`(トップレベルのみ)を購読し、Measurement追加時にサンプラー一式を生成して`readyRead`接続、削除時に切断+`sourceRemoved`emit
+- [x] サンプラーJSONに`uuid`追加(既存`sourceName`/`color`は維持)
+- [x] JS側: chart種別ごとの`Map<uuid,payload>`実装。`sourceRemoved`受信でMapから該当uuidを削除して再描画
+- [x] Spectrogramは選択中uuid1件のみ表示(2Dスクロールヒートマップは複数ソース重ね描画に意味がないため)。ツリー行クリックによるJSローカル選択でバッファをクリアし、次回データから描き直す。`SourceList::selectedChanged`とのアプリ全体での同期はPhase 8で`SettingsBridge`と一緒に導入する
+- [x] ツリーのactiveチェックボックスは`Abstract::Source::active`(=`SourceTreeBridge::setActive`)をそのまま流用。非activeは描画キャッシュから除外
 
 **完了条件・検証方法**: 複数Measurementを同時に起動すると、Magnitude/Phase/Coherence/RTAへ全ソースの線が該当ソース色で重ね描画される。activeトグルで即座に表示/非表示が切り替わる。ソース削除で残留線が消える。Spectrogramは選択中ソースのみ表示される。
 
 **依存Phase**: Phase 6完了後
+
+**完了メモ(実施結果)**:
+- `DataBridge`はトップレベルMeasurementごとに5種のサンプラーを保持し、追加・削除へ動的に追従するようになった。削除時は`readyRead`接続を明示的に解除してからサンプラーを破棄し、同じソースを移動・再追加した場合の重複通知も防止する。
+- `web/src/charts.ts`へ描画処理を分離し、Magnitude/Phase/Coherence/RTAはuuid単位の最新payloadをキャッシュして全アクティブ系列を共通canvasへ重ね描画する。各チャートにはソース色と名前の凡例を表示し、active変更・ソース削除時は新しい測定データを待たず即時再描画する。
+- Spectrogramの選択はPhase 7ではツリー行クリックによるJSローカル状態とし、切替時にcanvasをクリアする。初回未選択時のみ、最初に受信したソースを暫定選択する。
+- `web`の`npm run build`(TypeScript型チェック+Vite本番ビルド)と、Qt 5.15.2 x64/OpenGLのシャドウビルド(`qmake`+`make`)が成功した。
+- **レビュー時に実施したGUI回帰確認**: `QTWEBENGINE_REMOTE_DEBUGGING`のCDP経由(Node.js組み込み`WebSocket`で直接操作)で、実データに対して(1)4つのMeasurementをアクティブにし、RTAチャートに4色の重ね描画+凡例が表示されること、(2)いずれかのactiveチェックボックスをOFFにすると該当系列が凡例ごと即座に消えること(4件→3件)、(3)別のツリー行をクリックすると選択ハイライトが移動し、Spectrogramのバッファがクリアされて新しいソースのデータに切り替わること、をそれぞれ確認した。コンソールエラーは発生しなかった。`OSM_JS_FRONTEND`未設定の通常起動への影響もなし。
 
 ---
 

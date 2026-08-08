@@ -64,6 +64,7 @@ QString MagnitudeSeriesSampler::sampleJson(unsigned int pointsPerOctave)
 
     QJsonObject payload;
     payload["sourceName"] = m_source->name();
+    payload["uuid"] = m_source->uuid().toString();
     payload["color"] = m_source->color().name();
     payload["frequency"] = frequency;
     payload["magnitudeDb"] = magnitudeDb;
@@ -132,6 +133,7 @@ QString PhaseSeriesSampler::sampleJson(unsigned int pointsPerOctave)
 
     QJsonObject payload;
     payload["sourceName"] = m_source->name();
+    payload["uuid"] = m_source->uuid().toString();
     payload["color"] = m_source->color().name();
     payload["frequency"] = frequency;
     payload["phaseDeg"] = phaseDeg;
@@ -189,6 +191,7 @@ QString CoherenceSeriesSampler::sampleJson(unsigned int pointsPerOctave)
 
     QJsonObject payload;
     payload["sourceName"] = m_source->name();
+    payload["uuid"] = m_source->uuid().toString();
     payload["color"] = m_source->color().name();
     payload["frequency"] = frequency;
     payload["coherenceValue"] = coherenceValue;
@@ -252,6 +255,7 @@ QString RTASeriesSampler::sampleJson(unsigned int pointsPerOctave)
 
     QJsonObject payload;
     payload["sourceName"] = m_source->name();
+    payload["uuid"] = m_source->uuid().toString();
     payload["color"] = m_source->color().name();
     payload["frequency"] = frequency;
     payload["levelDb"] = levelDb;
@@ -319,6 +323,7 @@ QString SpectrogramSeriesSampler::sampleJson(unsigned int pointsPerOctave)
 
     QJsonObject payload;
     payload["sourceName"] = m_source->name();
+    payload["uuid"] = m_source->uuid().toString();
     payload["frequency"] = frequency;
     payload["levelDb"] = levelDb;
 

@@ -5,7 +5,6 @@
 
 #include "databridge.h"
 #include "sourcetreebridge.h"
-#include "src/source/measurement.h"
 #include "src/sourcelist.h"
 
 namespace Chart {
@@ -13,15 +12,7 @@ namespace Chart {
 JsFrontendManager::JsFrontendManager(SourceList *sourceList, bool useDevServer, QObject *parent)
     : QObject(parent), m_sourceList(sourceList)
 {
-    m_dataBridge = new DataBridge(this);
-    // Phase 6 continues to chart only the first top-level Measurement.
-    for (const auto &item : m_sourceList->items()) {
-        if (dynamic_cast<Measurement *>(item.get())) {
-            m_dataBridge->setSource(item);
-            break;
-        }
-    }
-
+    m_dataBridge = new DataBridge(m_sourceList, this);
     m_sourceTreeBridge = new SourceTreeBridge(m_sourceList, this);
 
     m_channel = new QWebChannel(this);

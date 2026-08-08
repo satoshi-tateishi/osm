@@ -49,10 +49,20 @@ body {
   padding: 0.3rem 0.2rem;
   border-radius: 4px;
   font-size: 0.85rem;
+  cursor: pointer;
 }
 
 .tree-row:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.tree-row.selected {
+  background: rgba(33, 150, 243, 0.25);
+}
+
+.tree-active {
+  flex: 0 0 auto;
+  margin: 0;
 }
 
 .tree-swatch {

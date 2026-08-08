@@ -1,83 +1,82 @@
-# 実装プロンプト: フロントエンドJS化 Phase 7(マルチソース重ね描画 + アクティブ切替)
+# 実装プロンプト: フロントエンドJS化 Phase 8(設定パネル: 選択ソース連動、読み取り+書き込み)
 
-このファイルは[js-frontend-phases.md](js-frontend-phases.md) Phase 7を実装するための指示書。Phase 6(シングルウィンドウ化+左ペイン読み取り専用ツリー)は完了・実機確認済み。
+このファイルは[js-frontend-phases.md](js-frontend-phases.md) Phase 8を実装するための指示書。Phase 7(マルチソース重ね描画+アクティブ切替)は完了・実機確認(CDP経由でのDOM操作検証含む)済み。
 
-## Phase 6完了時点の状態(前提)
+## Phase 7完了時点の状態(前提)
 
-- `JsFrontendManager`は単一の`QWebEngineView`+単一`QWebChannel`を起動時に1回だけ生成し、`sourceList`(ルート`SourceList*`そのまま)・`sourceTree`(`Chart::SourceTreeBridge`)・`chartData`(`Chart::DataBridge`)の3つを固定名で登録する。
-- `SourceTreeBridge`は既にトップレベルソースの読み取り専用ツリーJSONを`treeChanged`で配信しており、`Q_INVOKABLE setActive(QString uuid, bool active)`・`storeItem(QString uuid)`・`requestTree()`も**実装済み**(Phase 6実装時に前倒しで追加された)。**本Phaseでは`sourcetreebridge.h/.cpp`の変更は不要**。
-- `DataBridge`は現在「先頭のトップレベルMeasurement1つだけに固定バインドする」実装のまま(`setSource()`を1回呼ぶだけ)。本Phaseの主眼はここをマルチソース対応に拡張すること。
-- 中央チャートは`web/src/main.ts`が単一の`chartData`オブジェクトの5シグナルを購読し、受信のたびに該当canvas全体を「黒塗り→グリッド→1系列」で描き直す実装のまま(複数ソース重ね描きには未対応)。
+- 左ペインのツリー行クリックは、現在**JSローカルな状態**として扱われており(`web/src/sourceTree.ts`の`selectedUuid`変数)、クリックされたuuidは`onSelect`コールバック経由で`web/src/charts.ts`の`setSpectrogramSource(uuid, canvas)`に渡され、Spectrogramの表示対象を切り替えるためだけに使われている。`SourceList::selectedIndex`(QMLの選択と共有されるプロパティ)は**まだ使っていない**。
+- `SourceList::selectedUuid()`はQ_INVOKABLEでもQ_PROPERTYでもない plain C++メソッドのため、そもそもJSから直接呼び出せない(Phase 7で判明した制約)。
+- `Abstract::Source`(`src/abstract/source.h`)は`Q_PROPERTY(QColor color...)`/`Q_PROPERTY(bool active...)`/`Q_PROPERTY(QString name...)`を持つ。`Measurement`(`src/source/measurement.h`)はさらに多数のQ_PROPERTY(後述)を持ち、対応する列挙型(`AverageType`/`Mode`/`Filter::Frequency`/`InputFilter`)は全て`Q_ENUM`登録済みであることを確認した(`src/meta/metameasurement.h:38-46`、`src/math/bessellpf.h:29-30`)。これにより`QObject::setProperty(name, QVariant(intValue))`によるenumプロパティへの汎用書き込みが、Qtのメタオブジェクトシステムのint↔enum自動変換で機能する見込みが高い(**ただし実装時に実機で必ず動作確認すること**。もし特定のenumプロパティで書き込みが効かない場合は、そのプロパティだけ`Q_INVOKABLE`の専用セッターを追加するフォールバックとする)。
 
-## Phase 7のスコープ
+## Phase 8のスコープ
 
-1. `DataBridge`を**トップレベルMeasurement全件**に対応させ、ソースの追加/削除に追従してサンプラー一式を動的に生成/破棄する。JSON payloadに`uuid`フィールドを追加する。
-2. JS側でチャート種別ごとに`Map<uuid, payload>`キャッシュを持ち、複数ソースを同一チャートに重ね描きする。ソース削除時にキャッシュから除去する。
-3. 左ペインのツリー行にアクティブ切替チェックボックスを追加し、`sourceTree.setActive(uuid, active)`(Phase 6で実装済み)を呼び出す。非アクティブなソースはチャートの重ね描きから即座に除外する。
-4. Spectrogramは2Dスクロールヒートマップの性質上、複数ソース重ね描きに意味がないため**選択中1ソースのみ表示**する。選択は**ツリー行のクリックによるJSローカルな状態**とする(`SourceList::selectedIndex`とのアプリ全体レベルでの相互同期は、右ペイン設定パネルを作るPhase 8でSettingsBridgeと一緒に導入する。今回はスコープを絞り、二重実装を避ける)。
+1. 左ペインのツリー行クリックを「選択」として、Spectrogram切替に加えて**右ペインの設定パネル切替**にも使う(2つの独立した選択の仕組みを作らず、既存のクリックハンドラを両方に配線する)。
+2. 新規`Chart::SettingsBridge`を追加し、選択中ソースが`Measurement`であれば設定値のJSONスナップショットを配信し、JSからの書き込み(`setProperty`)・平均リセット(`resetAverage`)・スナップショット保存(`store`)を受け付ける。
+3. 右ペインに実フォームを実装し、Averaging Depth・Gain・Offset・Delay・Mode・Input Filter等を編集可能にする。
+4. レベルメーター(level/referenceLevel/peak)を軽量な別シグナルで高頻度配信する。
 
-## 実装1: `src/chart/databridge.h`(全面書き換え)
+**今回スコープ外(意図的に見送る)**: `deviceId`(型が`Q_PROPERTY`宣言上は`QString`だが実際のC++アクセサは`audio::DeviceInfo::Id`を返す独自型で、汎用`setProperty`での書き込みが安全に動くか未検証)、`dataChanel`/`referenceChanel`(デバイスのチャンネル一覧UIが別途必要で範囲が広がる)、`calibration`ファイル読み込み(ファイルダイアログが必要)。これらは将来のPhaseで扱う。
+
+## 実装1(新規): `src/chart/settingsbridge.h`
 
 ```cpp
-#ifndef CHART_DATABRIDGE_H
-#define CHART_DATABRIDGE_H
+#ifndef CHART_SETTINGSBRIDGE_H
+#define CHART_SETTINGSBRIDGE_H
 
-#include <QMap>
 #include <QObject>
+#include <QString>
 #include <QUuid>
+#include <QVariant>
 
-#include "seriessampler.h"
 #include "shared/source_shared.h"
 
 class SourceList;
 
 namespace Chart {
 
-// トップレベルのMeasurement全件についてサンプラー一式を保持し、各ソースの
-// readyRead()のたびに該当ソース分のJSONを配信する(複数ウィンドウではなく
-// 単一のchartDataオブジェクトが全ソース分を多重化して流す設計)。
-class DataBridge : public QObject
+// 右ペイン用ブリッジ。選択中1ソース分の設定値スナップショットをsettingsChangedで
+// 配信し、setProperty()等のQ_INVOKABLEで書き込みを受け付ける。選択状態は
+// SourceList::selectedIndexとは連動させず、左ペインのクリックによるJSローカル選択を
+// そのまま流用する(Phase 7でSpectrogram選択に採用した方式と統一するため)。
+class SettingsBridge : public QObject
 {
     Q_OBJECT
 public:
-    explicit DataBridge(SourceList *sourceList, QObject *parent = nullptr);
-    ~DataBridge() override;
+    explicit SettingsBridge(SourceList *sourceList, QObject *parent = nullptr);
+
+    Q_INVOKABLE void selectSource(const QString &uuid);
+    Q_INVOKABLE void setProperty(const QString &uuid, const QString &name, const QVariant &value);
+    Q_INVOKABLE void resetAverage(const QString &uuid);
+    Q_INVOKABLE void store(const QString &uuid);
+    Q_INVOKABLE void applyAutoGain(const QString &uuid, float reference);
 
 signals:
-    void magnitudeUpdated(const QString &json);
-    void phaseUpdated(const QString &json);
-    void coherenceUpdated(const QString &json);
-    void rtaUpdated(const QString &json);
-    void spectrogramRowUpdated(const QString &json);
-    void sourceRemoved(const QString &uuid);
+    void settingsChanged(const QString &json);
+    void meterUpdated(const QString &json);
 
 private slots:
-    void onItemAppended(const Shared::Source &item);
-    void onItemRemoved(QUuid uuid);
     void onReadyRead();
 
 private:
-    struct SamplerSet {
-        MagnitudeSeriesSampler magnitude;
-        PhaseSeriesSampler phase;
-        CoherenceSeriesSampler coherence;
-        RTASeriesSampler rta;
-        SpectrogramSeriesSampler spectrogram;
-    };
+    void emitSettings();
 
     SourceList *m_sourceList;
-    QMap<QUuid, SamplerSet *> m_samplers;
+    QUuid m_selectedUuid;
+    Shared::Source m_selectedSource;
 };
 
 } // namespace Chart
 
-#endif // CHART_DATABRIDGE_H
+#endif // CHART_SETTINGSBRIDGE_H
 ```
 
-## 実装2: `src/chart/databridge.cpp`(全面書き換え)
+## 実装2(新規): `src/chart/settingsbridge.cpp`
 
 ```cpp
-#include "databridge.h"
+#include "settingsbridge.h"
+
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "abstract/source.h"
 #include "src/source/measurement.h"
@@ -85,484 +84,287 @@ private:
 
 namespace Chart {
 
-DataBridge::DataBridge(SourceList *sourceList, QObject *parent)
+SettingsBridge::SettingsBridge(SourceList *sourceList, QObject *parent)
     : QObject(parent), m_sourceList(sourceList)
 {
-    connect(m_sourceList, &SourceList::postItemAppended, this, &DataBridge::onItemAppended);
-    connect(m_sourceList, &SourceList::preItemRemoved, this, &DataBridge::onItemRemoved);
+}
 
-    for (const auto &item : m_sourceList->items()) {
-        onItemAppended(item);
+void SettingsBridge::selectSource(const QString &uuidString)
+{
+    if (m_selectedSource) {
+        disconnect(m_selectedSource.get(), &Abstract::Source::readyRead, this, &SettingsBridge::onReadyRead);
+    }
+
+    m_selectedUuid = QUuid(uuidString);
+    m_selectedSource = m_sourceList->getByUUid(m_selectedUuid);
+
+    if (m_selectedSource) {
+        connect(m_selectedSource.get(), &Abstract::Source::readyRead, this, &SettingsBridge::onReadyRead);
+    }
+    emitSettings();
+}
+
+void SettingsBridge::setProperty(const QString &uuidString, const QString &name, const QVariant &value)
+{
+    if (QUuid(uuidString) != m_selectedUuid || !m_selectedSource) {
+        return; // 選択が既に切り替わった後の遅延書き込みは無視する
+    }
+    m_selectedSource->setProperty(name.toUtf8().constData(), value);
+    emitSettings();
+}
+
+void SettingsBridge::resetAverage(const QString &uuidString)
+{
+    if (QUuid(uuidString) != m_selectedUuid) {
+        return;
+    }
+    if (auto *measurement = dynamic_cast<Measurement *>(m_selectedSource.get())) {
+        measurement->resetAverage();
     }
 }
 
-DataBridge::~DataBridge()
+void SettingsBridge::store(const QString &uuidString)
 {
-    qDeleteAll(m_samplers);
+    if (QUuid(uuidString) != m_selectedUuid || !m_selectedSource) {
+        return;
+    }
+    m_sourceList->storeItem(m_selectedSource);
 }
 
-void DataBridge::onItemAppended(const Shared::Source &item)
+void SettingsBridge::applyAutoGain(const QString &uuidString, float reference)
 {
-    if (!dynamic_cast<Measurement *>(item.get())) {
+    if (QUuid(uuidString) != m_selectedUuid) {
         return;
     }
-    auto uuid = item->uuid();
-    if (m_samplers.contains(uuid)) {
-        return;
+    if (auto *measurement = dynamic_cast<Measurement *>(m_selectedSource.get())) {
+        measurement->applyAutoGain(reference);
     }
-
-    auto *samplers = new SamplerSet();
-    samplers->magnitude.setSource(item);
-    samplers->phase.setSource(item);
-    samplers->coherence.setSource(item);
-    samplers->rta.setSource(item);
-    samplers->spectrogram.setSource(item);
-    m_samplers.insert(uuid, samplers);
-
-    connect(item.get(), &Abstract::Source::readyRead, this, &DataBridge::onReadyRead);
+    emitSettings();
 }
 
-void DataBridge::onItemRemoved(QUuid uuid)
+void SettingsBridge::onReadyRead()
 {
-    // preItemRemoved(uuid)を使う(postItemRemovedは引数を持たないため、
-    // どのソースのサンプラーを破棄すべきか特定できない)。SourceTreeBridgeが
-    // ツリー再構築にpostItemRemovedを使っているのとは目的が異なる点に注意。
-    auto it = m_samplers.find(uuid);
-    if (it == m_samplers.end()) {
+    auto *measurement = dynamic_cast<Measurement *>(m_selectedSource.get());
+    if (!measurement) {
         return;
     }
-    delete it.value();
-    m_samplers.erase(it);
-    emit sourceRemoved(uuid.toString());
+    QJsonObject payload;
+    payload["level"] = measurement->level();
+    payload["referenceLevel"] = measurement->referenceLevel();
+    payload["measurementPeak"] = measurement->measurementPeak();
+    payload["referencePeak"] = measurement->referencePeak();
+    emit meterUpdated(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
 }
 
-void DataBridge::onReadyRead()
+void SettingsBridge::emitSettings()
 {
-    auto *source = qobject_cast<Abstract::Source *>(sender());
-    if (!source) {
+    QJsonObject payload;
+
+    if (!m_selectedSource) {
+        payload["uuid"] = QJsonValue();
+        emit settingsChanged(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
         return;
     }
-    auto it = m_samplers.find(source->uuid());
-    if (it == m_samplers.end()) {
-        return;
-    }
-    auto *samplers = it.value();
 
-    auto magnitudeJson = samplers->magnitude.sampleJson();
-    if (!magnitudeJson.isEmpty()) {
-        emit magnitudeUpdated(magnitudeJson);
-    }
+    payload["uuid"] = m_selectedUuid.toString();
+    payload["type"] = m_selectedSource->objectName();
 
-    auto phaseJson = samplers->phase.sampleJson();
-    if (!phaseJson.isEmpty()) {
-        emit phaseUpdated(phaseJson);
-    }
-
-    auto coherenceJson = samplers->coherence.sampleJson();
-    if (!coherenceJson.isEmpty()) {
-        emit coherenceUpdated(coherenceJson);
-    }
-
-    auto rtaJson = samplers->rta.sampleJson();
-    if (!rtaJson.isEmpty()) {
-        emit rtaUpdated(rtaJson);
+    auto *measurement = dynamic_cast<Measurement *>(m_selectedSource.get());
+    payload["editable"] = measurement != nullptr;
+    if (measurement) {
+        payload["name"] = measurement->name();
+        payload["active"] = measurement->active();
+        payload["averageType"] = static_cast<int>(measurement->averageType());
+        payload["average"] = measurement->average();
+        payload["averageTickSeconds"] = measurement->averageTickSeconds();
+        payload["filtersFrequency"] = static_cast<int>(measurement->filtersFrequency());
+        payload["gain"] = measurement->gain();
+        payload["offset"] = measurement->offset();
+        payload["delay"] = measurement->delay();
+        payload["mode"] = static_cast<int>(measurement->mode());
+        payload["tfcReferenceTime"] = measurement->tfcReferenceTime();
+        payload["inputFilter"] = static_cast<int>(measurement->inputFilter());
+        payload["polarity"] = measurement->polarity();
     }
 
-    auto spectrogramJson = samplers->spectrogram.sampleJson();
-    if (!spectrogramJson.isEmpty()) {
-        emit spectrogramRowUpdated(spectrogramJson);
-    }
+    emit settingsChanged(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
 }
 
 } // namespace Chart
 ```
 
-**補足**: `setSource()`という公開メソッドは廃止した(呼び出し元は`JsFrontendManager`のみで、コンストラクタで`SourceList`を渡す設計に一本化したため)。
+**列挙値の対応表(JS側のラベル表示に使用、`src/meta/metameasurement.h:38-46`・`src/math/bessellpf.h:29`より)**:
+- `averageType`: 0=Off, 1=LPF, 2=FIFO
+- `mode`: 0=FFT10(1024), 1=FFT11(2048), 2=FFT12(4096), 3=FFT13(8192), 4=FFT14(16384), 5=FFT15(32768), 6=FFT16(65536), 7=LFT(LTW), 8=TFC
+- `filtersFrequency`: 0=0.25Hz, 1=0.5Hz, 2=1Hz
+- `inputFilter`: 0=Z, 1=A, 2=C, 3=Notch, 4=BP100, 5=LP200
 
-## 実装3: `src/chart/seriessampler.cpp`の変更(5箇所、`uuid`フィールド追加)
+## 実装3: `OpenSoundMeter.pro`の変更
 
-`payload["sourceName"] = m_source->name();`という行が5箇所(Magnitude/Phase/Coherence/RTA/Spectrogramの各`sampleJson()`、66・134・191・254・321行目付近)にあるので、**それぞれの直後**に以下を追加する:
-
-```cpp
-    payload["uuid"] = m_source->uuid().toString();
+`SOURCES +=`ブロックの`src/chart/sourcetreebridge.cpp \`の直後に追加:
+```
+    src/chart/settingsbridge.cpp \
+```
+`HEADERS +=`ブロックの`src/chart/sourcetreebridge.h \`の直後に追加:
+```
+    src/chart/settingsbridge.h \
 ```
 
-(Spectrogramのpayloadは元々`color`フィールドを持たない設計のままでよい。`uuid`だけ追加する。)
+## 実装4: `src/chart/jsfrontendmanager.h`/`.cpp`の変更
 
-## 実装4: `src/chart/jsfrontendmanager.cpp`の変更
-
-コンストラクタを以下のように簡略化する(`DataBridge`が`SourceList`を直接受け取って自己管理するようになったため、先頭Measurementを探すforループと`src/source/measurement.h`のincludeが不要になる):
+`jsfrontendmanager.h`: `SettingsBridge`の前方宣言と`m_settingsBridge`メンバを追加。
 
 ```cpp
-#include "jsfrontendmanager.h"
-
-#include <QWebChannel>
-#include <QWebEngineView>
-
-#include "databridge.h"
-#include "sourcetreebridge.h"
-#include "src/sourcelist.h"
-
 namespace Chart {
 
-JsFrontendManager::JsFrontendManager(SourceList *sourceList, bool useDevServer, QObject *parent)
-    : QObject(parent), m_sourceList(sourceList)
+class DataBridge;
+class SourceTreeBridge;
+class SettingsBridge; // 追加
+
+class JsFrontendManager : public QObject
 {
-    m_dataBridge = new DataBridge(m_sourceList, this);
-    m_sourceTreeBridge = new SourceTreeBridge(m_sourceList, this);
+    ...
+private:
+    SourceList *m_sourceList;
+    QWebChannel *m_channel;
+    QWebEngineView *m_view;
+    DataBridge *m_dataBridge;
+    SourceTreeBridge *m_sourceTreeBridge;
+    SettingsBridge *m_settingsBridge; // 追加
+};
 
-    m_channel = new QWebChannel(this);
-    m_channel->registerObject(QStringLiteral("sourceList"), m_sourceList);
-    m_channel->registerObject(QStringLiteral("sourceTree"), m_sourceTreeBridge);
-    m_channel->registerObject(QStringLiteral("chartData"), m_dataBridge);
-
-    m_view = new QWebEngineView();
-    m_view->page()->setWebChannel(m_channel);
-    m_view->resize(1440, 900);
-    m_view->setWindowTitle(QStringLiteral("OSM"));
-    m_view->load(useDevServer
-                 ? QUrl(QStringLiteral("http://localhost:5173/"))
-                 : QUrl(QStringLiteral("qrc:/web/index.html")));
-    m_view->show();
 }
-
-JsFrontendManager::~JsFrontendManager()
-{
-    delete m_view;
-}
-
-} // namespace Chart
 ```
 
-`jsfrontendmanager.h`は変更不要。`OpenSoundMeter.pro`も変更不要(新規ファイルなし)。
+`jsfrontendmanager.cpp`のコンストラクタに追加(`#include "settingsbridge.h"`も追加):
 
-## 実装5(新規): `web/src/charts.ts`(チャート描画をmain.tsから分離、マルチソース対応)
+```cpp
+    m_settingsBridge = new SettingsBridge(m_sourceList, this);
+    ...
+    m_channel->registerObject(QStringLiteral("settings"), m_settingsBridge);
+```
+
+## 実装5: `web/src/webchannel.ts`の変更(`settings`オブジェクトを追加)
 
 ```ts
-export interface SeriesPayload {
-  uuid: string
-  sourceName: string
-  color: string
-  frequency: number[]
+export interface ChannelObjects {
+  sourceList: any
+  sourceTree: any
+  chartData: any
+  settings: any // 追加
 }
-export interface MagnitudePayload extends SeriesPayload { magnitudeDb: (number | null)[] }
-export interface PhasePayload extends SeriesPayload { phaseDeg: (number | null)[] }
-export interface CoherencePayload extends SeriesPayload { coherenceValue: (number | null)[] }
-export interface RTAPayload extends SeriesPayload { levelDb: (number | null)[] }
-export interface SpectrogramPayload {
-  uuid: string
-  sourceName: string
-  frequency: number[]
-  levelDb: number[]
+```
+
+`connectWebChannel`内の分割代入・null チェック・`resolveObjects`呼び出しにも`settings`を追加する。
+
+## 実装6(新規): `web/src/settingsPanel.ts`
+
+```ts
+export interface SettingsPayload {
+  uuid: string | null
+  type?: string
+  editable?: boolean
+  name?: string
+  active?: boolean
+  averageType?: number
+  average?: number
+  averageTickSeconds?: number
+  filtersFrequency?: number
+  gain?: number
+  offset?: number
+  delay?: number
+  mode?: number
+  tfcReferenceTime?: number
+  inputFilter?: number
+  polarity?: boolean
 }
 
-const XMIN = 20
-const XMAX = 20000
-const GRID_FREQS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
-
-function xForFreq(f: number, width: number) {
-  return (Math.log(f) - Math.log(XMIN)) / Math.log(XMAX / XMIN) * width
+export interface MeterPayload {
+  level: number
+  referenceLevel: number
+  measurementPeak: number
+  referencePeak: number
 }
 
-function drawGrid(canvas: HTMLCanvasElement) {
-  const ctx = canvas.getContext('2d')!
-  const cw = canvas.width / devicePixelRatio
-  const ch = canvas.height / devicePixelRatio
-  ctx.save()
-  ctx.scale(devicePixelRatio, devicePixelRatio)
-  ctx.fillStyle = '#000000'
-  ctx.fillRect(0, 0, cw, ch)
-  ctx.strokeStyle = 'rgba(255,255,255,0.157)'
-  ctx.lineWidth = 1
-  for (const f of GRID_FREQS) {
-    const x = xForFreq(f, cw)
-    ctx.beginPath()
-    ctx.moveTo(x, 0)
-    ctx.lineTo(x, ch)
-    ctx.stroke()
+const MODE_LABELS = ['FFT 1024', 'FFT 2048', 'FFT 4096', 'FFT 8192', 'FFT 16384', 'FFT 32768', 'FFT 65536', 'LTW', 'TFC']
+const AVERAGE_TYPE_LABELS = ['Off', 'LPF', 'FIFO']
+const FILTERS_FREQUENCY_LABELS = ['0.25 Hz', '0.5 Hz', '1 Hz']
+const INPUT_FILTER_LABELS = ['Z', 'A', 'C', 'Notch', 'BP100', 'LP200']
+const AVERAGE_TYPE_LPF = 1
+const AVERAGE_TYPE_FIFO = 2
+const MODE_TFC = 8
+
+function options(labels: string[], selected: number | undefined) {
+  return labels.map((label, i) => `<option value="${i}" ${selected === i ? 'selected' : ''}>${label}</option>`).join('')
+}
+
+export function renderSettingsPanel(
+  container: HTMLElement,
+  payload: SettingsPayload | null,
+  callbacks: {
+    onChange: (name: string, value: number | string | boolean) => void
+    onResetAverage: () => void
+    onStore: () => void
   }
-  ctx.restore()
-}
-
-// wrapThreshold: 隣接点の差がこれを超えたら線を繋がず区切る(Phaseの±180度ラップ対策)。
-function drawOneSeries(
-  canvas: HTMLCanvasElement,
-  frequency: number[],
-  values: (number | null)[],
-  color: string,
-  yMin: number,
-  yMax: number,
-  wrapThreshold = Infinity
 ) {
-  const ctx = canvas.getContext('2d')!
-  const cw = canvas.width / devicePixelRatio
-  const ch = canvas.height / devicePixelRatio
-  ctx.save()
-  ctx.scale(devicePixelRatio, devicePixelRatio)
-
-  const yForValue = (v: number) => ch - (v - yMin) / (yMax - yMin) * ch
-
-  ctx.strokeStyle = color || '#3F51B5'
-  ctx.lineWidth = 1.5
-  ctx.beginPath()
-  let penDown = false
-  let lastValue: number | null = null
-  frequency.forEach((f, idx) => {
-    const v = values[idx]
-    if (v === null || !Number.isFinite(v)) {
-      penDown = false
-      lastValue = null
-      return
-    }
-    if (lastValue !== null && Math.abs(v - lastValue) > wrapThreshold) {
-      penDown = false
-    }
-    const x = xForFreq(f, cw)
-    const y = yForValue(v)
-    if (!penDown) {
-      ctx.moveTo(x, y)
-      penDown = true
-    } else {
-      ctx.lineTo(x, y)
-    }
-    lastValue = v
-  })
-  ctx.stroke()
-  ctx.restore()
-}
-
-function drawLegend(canvas: HTMLCanvasElement, entries: { color: string; name: string }[]) {
-  const ctx = canvas.getContext('2d')!
-  ctx.save()
-  ctx.scale(devicePixelRatio, devicePixelRatio)
-  ctx.font = '11px sans-serif'
-  entries.forEach((entry, i) => {
-    const y = 12 + i * 13
-    ctx.fillStyle = entry.color || '#3F51B5'
-    ctx.fillRect(8, y - 8, 8, 8)
-    ctx.fillStyle = 'rgba(255,255,255,255)'
-    ctx.fillText(entry.name, 20, y)
-  })
-  ctx.restore()
-}
-
-function finiteRange(valuesList: (number | null)[][], padRatio = 0.1, fallbackPad = 1) {
-  const finite = valuesList.flat().filter((v): v is number => v !== null && Number.isFinite(v))
-  if (!finite.length) return null
-  const min = Math.min(...finite)
-  const max = Math.max(...finite)
-  const pad = (max - min) * padRatio || fallbackPad
-  return { min: min - pad, max: max + pad }
-}
-
-let activeUuids: Set<string> | null = null // nullの間は全件を有効として扱う(初回treeChanged受信前の暫定措置)
-
-const magnitudeCache = new Map<string, MagnitudePayload>()
-const phaseCache = new Map<string, PhasePayload>()
-const coherenceCache = new Map<string, CoherencePayload>()
-const rtaCache = new Map<string, RTAPayload>()
-
-function visibleEntries<T extends { uuid: string }>(cache: Map<string, T>): T[] {
-  const all = [...cache.values()]
-  if (!activeUuids) return all
-  return all.filter((e) => activeUuids!.has(e.uuid))
-}
-
-export interface ChartCanvases {
-  magnitude: HTMLCanvasElement
-  phase: HTMLCanvasElement
-  coherence: HTMLCanvasElement
-  rta: HTMLCanvasElement
-  spectrogram: HTMLCanvasElement
-}
-
-export function setActiveUuids(uuids: Set<string>, canvases: ChartCanvases) {
-  activeUuids = uuids
-  redrawMagnitude(canvases.magnitude)
-  redrawPhase(canvases.phase)
-  redrawCoherence(canvases.coherence)
-  redrawRTA(canvases.rta)
-}
-
-function redrawMagnitude(canvas: HTMLCanvasElement) {
-  drawGrid(canvas)
-  const entries = visibleEntries(magnitudeCache)
-  const range = finiteRange(entries.map((e) => e.magnitudeDb)) ?? { min: -1, max: 1 }
-  entries.forEach((e) => drawOneSeries(canvas, e.frequency, e.magnitudeDb, e.color, range.min, range.max))
-  drawLegend(canvas, entries.map((e) => ({ color: e.color, name: e.sourceName })))
-}
-export function updateMagnitude(canvas: HTMLCanvasElement, payload: MagnitudePayload) {
-  magnitudeCache.set(payload.uuid, payload)
-  redrawMagnitude(canvas)
-}
-
-function redrawPhase(canvas: HTMLCanvasElement) {
-  drawGrid(canvas)
-  const entries = visibleEntries(phaseCache)
-  entries.forEach((e) => drawOneSeries(canvas, e.frequency, e.phaseDeg, e.color, -180, 180, 180))
-  drawLegend(canvas, entries.map((e) => ({ color: e.color, name: e.sourceName })))
-}
-export function updatePhase(canvas: HTMLCanvasElement, payload: PhasePayload) {
-  phaseCache.set(payload.uuid, payload)
-  redrawPhase(canvas)
-}
-
-function redrawCoherence(canvas: HTMLCanvasElement) {
-  drawGrid(canvas)
-  const entries = visibleEntries(coherenceCache)
-  entries.forEach((e) => drawOneSeries(canvas, e.frequency, e.coherenceValue, e.color, 0, 1))
-  drawLegend(canvas, entries.map((e) => ({ color: e.color, name: e.sourceName })))
-}
-export function updateCoherence(canvas: HTMLCanvasElement, payload: CoherencePayload) {
-  coherenceCache.set(payload.uuid, payload)
-  redrawCoherence(canvas)
-}
-
-function redrawRTA(canvas: HTMLCanvasElement) {
-  drawGrid(canvas)
-  const entries = visibleEntries(rtaCache)
-  const range = finiteRange(entries.map((e) => e.levelDb)) ?? { min: -1, max: 1 }
-  entries.forEach((e) => drawOneSeries(canvas, e.frequency, e.levelDb, e.color, range.min, range.max))
-  drawLegend(canvas, entries.map((e) => ({ color: e.color, name: e.sourceName })))
-}
-export function updateRTA(canvas: HTMLCanvasElement, payload: RTAPayload) {
-  rtaCache.set(payload.uuid, payload)
-  redrawRTA(canvas)
-}
-
-export function removeSource(uuid: string, canvases: ChartCanvases) {
-  magnitudeCache.delete(uuid)
-  phaseCache.delete(uuid)
-  coherenceCache.delete(uuid)
-  rtaCache.delete(uuid)
-  redrawMagnitude(canvases.magnitude)
-  redrawPhase(canvases.phase)
-  redrawCoherence(canvases.coherence)
-  redrawRTA(canvases.rta)
-  if (spectrogramSourceUuid === uuid) {
-    spectrogramSourceUuid = null
+  if (!payload || !payload.uuid) {
+    container.innerHTML = '<p class="placeholder">左のリストからソースを選択してください</p>'
+    return
   }
-}
-
-// --- Spectrogram: 選択中1ソースのみ表示 ---
-
-const SPECTROGRAM_ROWS = 51
-const SPEC_LOWER = -70
-const SPEC_UPPER = -10
-const COLOR_BLUE: [number, number, number] = [33, 150, 243]
-const COLOR_GREEN: [number, number, number] = [139, 195, 74]
-const COLOR_YELLOW: [number, number, number] = [255, 235, 59]
-const COLOR_RED: [number, number, number] = [244, 67, 54]
-
-function mixColor(a: [number, number, number], b: [number, number, number], k: number): [number, number, number] {
-  return [0, 1, 2].map((i) => a[i] + k * (b[i] - a[i])) as [number, number, number]
-}
-
-function spectrogramColor(db: number): string {
-  if (db <= SPEC_LOWER) return 'rgb(0,0,0)'
-  const seg = (SPEC_UPPER - SPEC_LOWER) / 3
-  let rgb: [number, number, number]
-  if (seg <= 0 || db >= SPEC_UPPER) {
-    rgb = COLOR_RED
-  } else if (db < SPEC_LOWER + seg) {
-    rgb = mixColor(COLOR_BLUE, COLOR_GREEN, (db - SPEC_LOWER) / seg)
-  } else if (db < SPEC_LOWER + 2 * seg) {
-    rgb = mixColor(COLOR_GREEN, COLOR_YELLOW, (db - (SPEC_LOWER + seg)) / seg)
-  } else {
-    rgb = mixColor(COLOR_YELLOW, COLOR_RED, (db - (SPEC_LOWER + 2 * seg)) / seg)
-  }
-  return `rgb(${Math.round(rgb[0])},${Math.round(rgb[1])},${Math.round(rgb[2])})`
-}
-
-let spectrogramSourceUuid: string | null = null
-
-// ツリー行クリックで呼ばれる。選択切り替え時はスクロール履歴が別ソースのものになるためクリアする。
-export function setSpectrogramSource(uuid: string, canvas: HTMLCanvasElement) {
-  if (spectrogramSourceUuid === uuid) return
-  spectrogramSourceUuid = uuid
-  const ctx = canvas.getContext('2d')!
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-}
-
-export function updateSpectrogramRow(canvas: HTMLCanvasElement, payload: SpectrogramPayload) {
-  if (spectrogramSourceUuid === null) {
-    spectrogramSourceUuid = payload.uuid // 初回受信ソースを暫定的に自動選択
-  }
-  if (payload.uuid !== spectrogramSourceUuid) return
-
-  const ctx = canvas.getContext('2d')!
-  const cw = canvas.width
-  const ch = canvas.height
-  const rowHeight = Math.max(1, Math.floor(ch / SPECTROGRAM_ROWS))
-
-  if (ch > rowHeight) {
-    const img = ctx.getImageData(0, 0, cw, ch - rowHeight)
-    ctx.putImageData(img, 0, rowHeight)
+  if (!payload.editable) {
+    container.innerHTML = `<p class="placeholder">${escapeHtml(payload.type ?? '')}の設定はまだ対応していません</p>`
+    return
   }
 
-  const n = payload.frequency.length
-  for (let i = 0; i < n; i++) {
-    const prevX = i > 0 ? xForFreq(payload.frequency[i - 1], cw) : 0
-    const curX = xForFreq(payload.frequency[i], cw)
-    const nextX = i < n - 1 ? xForFreq(payload.frequency[i + 1], cw) : cw
-    const xStart = i > 0 ? (prevX + curX) / 2 : 0
-    const xEnd = i < n - 1 ? (curX + nextX) / 2 : cw
-    ctx.fillStyle = spectrogramColor(payload.levelDb[i])
-    ctx.fillRect(xStart, 0, Math.max(1, xEnd - xStart), rowHeight)
-  }
-}
-```
-
-## 実装6: `web/src/sourceTree.ts`の変更(アクティブ切替チェックボックス + クリック選択)
-
-```ts
-export interface TreeItem {
-  uuid: string
-  type: string
-  name: string
-  color: string
-  active: boolean
-}
-
-export interface TreeCallbacks {
-  onToggleActive: (uuid: string, active: boolean) => void
-  onSelect: (uuid: string) => void
-}
-
-const TYPE_ICON: Record<string, string> = {
-  Measurement: '\u{1F399}',
-  Stored: '\u{1F4BE}',
-  Group: '\u{1F4C1}',
-}
-
-let selectedUuid: string | null = null
-
-export function renderSourceTree(container: HTMLElement, items: TreeItem[], callbacks: TreeCallbacks) {
-  container.innerHTML = items.map((item) => `
-    <div class="tree-row${item.uuid === selectedUuid ? ' selected' : ''}" data-uuid="${item.uuid}">
-      <input type="checkbox" class="tree-active" ${item.active ? 'checked' : ''} />
-      <span class="tree-swatch" style="background:${item.color}"></span>
-      <span class="tree-icon">${TYPE_ICON[item.type] ?? '•'}</span>
-      <span class="tree-name${item.active ? '' : ' tree-inactive'}">${escapeHtml(item.name)}</span>
+  container.innerHTML = `
+    <div class="settings-field"><label>Name</label><input type="text" data-prop="name" value="${escapeAttr(payload.name ?? '')}" /></div>
+    <div class="settings-field"><label>Gain (dB)</label><input type="number" step="0.1" data-prop="gain" value="${payload.gain}" /></div>
+    <div class="settings-field"><label>Offset (dB)</label><input type="number" step="0.1" data-prop="offset" value="${payload.offset}" /></div>
+    <div class="settings-field"><label>Delay (samples)</label><input type="number" step="1" data-prop="delay" value="${payload.delay}" /></div>
+    <div class="settings-field"><label>Mode</label>
+      <select data-prop="mode">${options(MODE_LABELS, payload.mode)}</select>
     </div>
-  `).join('')
+    <div class="settings-field" ${payload.mode === MODE_TFC ? '' : 'style="display:none"'}>
+      <label>TFC reference time (ms)</label><input type="number" step="1" data-prop="tfcReferenceTime" value="${payload.tfcReferenceTime}" />
+    </div>
+    <div class="settings-field"><label>Average type</label>
+      <select data-prop="averageType">${options(AVERAGE_TYPE_LABELS, payload.averageType)}</select>
+    </div>
+    <div class="settings-field" ${payload.averageType === AVERAGE_TYPE_FIFO ? '' : 'style="display:none"'}>
+      <label>Average count (≈${((payload.average ?? 0) * (payload.averageTickSeconds ?? 0)).toFixed(2)}s)</label>
+      <input type="number" step="1" data-prop="average" value="${payload.average}" />
+    </div>
+    <div class="settings-field" ${payload.averageType === AVERAGE_TYPE_LPF ? '' : 'style="display:none"'}>
+      <label>Filter frequency</label>
+      <select data-prop="filtersFrequency">${options(FILTERS_FREQUENCY_LABELS, payload.filtersFrequency)}</select>
+    </div>
+    <div class="settings-field"><label>Input filter</label>
+      <select data-prop="inputFilter">${options(INPUT_FILTER_LABELS, payload.inputFilter)}</select>
+    </div>
+    <div class="settings-actions">
+      <button data-action="reset-average">Reset Average</button>
+      <button data-action="store">Store</button>
+    </div>
+    <div id="settings-meter" class="settings-meter"></div>
+  `
 
-  container.querySelectorAll<HTMLInputElement>('.tree-active').forEach((checkbox) => {
-    checkbox.addEventListener('click', (e) => e.stopPropagation())
-    checkbox.addEventListener('change', () => {
-      const uuid = checkbox.closest<HTMLElement>('.tree-row')!.dataset.uuid!
-      callbacks.onToggleActive(uuid, checkbox.checked)
+  container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-prop]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const name = el.dataset.prop!
+      const value = el instanceof HTMLSelectElement || (el as HTMLInputElement).type === 'number'
+        ? Number(el.value)
+        : el.value
+      callbacks.onChange(name, value)
     })
   })
-  container.querySelectorAll<HTMLElement>('.tree-row').forEach((row) => {
-    row.addEventListener('click', () => {
-      const uuid = row.dataset.uuid!
-      container.querySelectorAll('.tree-row.selected').forEach((el) => el.classList.remove('selected'))
-      row.classList.add('selected')
-      selectedUuid = uuid
-      callbacks.onSelect(uuid)
-    })
-  })
+  container.querySelector('[data-action="reset-average"]')?.addEventListener('click', callbacks.onResetAverage)
+  container.querySelector('[data-action="store"]')?.addEventListener('click', callbacks.onStore)
+}
+
+export function renderMeter(payload: MeterPayload) {
+  const el = document.querySelector<HTMLDivElement>('#settings-meter')
+  if (!el) return
+  el.textContent = `Level ${payload.level.toFixed(1)} dB   Ref ${payload.referenceLevel.toFixed(1)} dB   Peak ${payload.measurementPeak.toFixed(1)} dB`
 }
 
 function escapeHtml(text: string): string {
@@ -570,126 +372,103 @@ function escapeHtml(text: string): string {
   div.textContent = text
   return div.innerHTML
 }
+function escapeAttr(text: string): string {
+  return escapeHtml(text).replace(/"/g, '&quot;')
+}
 ```
 
-## 実装7: `web/src/main.ts`の変更(charts.ts経由の配線に差し替え)
+## 実装7: `web/src/main.ts`の変更
 
+1. DOM構築の`.pane-right`を以下に変更:
+```html
+<div class="pane pane-right">
+  <h2>Settings</h2>
+  <div id="settings-panel"><p class="placeholder">左のリストからソースを選択してください</p></div>
+</div>
+```
+2. `import { renderSettingsPanel, renderMeter, type SettingsPayload, type MeterPayload } from './settingsPanel'`を追加。
+3. `const settingsPanelEl = document.querySelector<HTMLDivElement>('#settings-panel')!`を追加。
+4. `renderSourceTree`の`onSelect`コールバックを拡張し、Spectrogram切替に加えて設定パネルの選択も行う:
 ```ts
-import './style.css'
-import * as charts from './charts'
-import { renderSourceTree, type TreeItem } from './sourceTree'
-import { channelReady, connectWebChannel } from './webchannel'
+onSelect: (uuid) => {
+  charts.setSpectrogramSource(uuid, canvases.spectrogram)
+  settings.selectSource(uuid)
+},
+```
+5. `channelReady.then(({ sourceTree, chartData, settings }) => { ... })`に`settings`を追加し、以下を配線する:
+```ts
+let currentSettingsUuid: string | null = null
 
-// DOM構築(Phase 6と同じ3ペイン構成、変更なし)
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div class="pane pane-left">
-    <h2>Sources</h2>
-    <p id="status">QWebChannel接続待ち...</p>
-    <div id="source-tree"></div>
-  </div>
-  <div class="pane pane-center">
-    <h2>Magnitude</h2>
-    <canvas id="chart-magnitude" class="chart"></canvas>
-    <h2>RTA</h2>
-    <canvas id="chart-rta" class="chart"></canvas>
-    <h2>Spectrogram</h2>
-    <canvas id="chart-spectrogram" class="chart"></canvas>
-    <h2>Phase</h2>
-    <canvas id="chart-phase" class="chart"></canvas>
-    <h2>Coherence</h2>
-    <canvas id="chart-coherence" class="chart"></canvas>
-  </div>
-  <div class="pane pane-right">
-    <h2>Settings</h2>
-    <p class="placeholder">Phase 8で実装予定</p>
-  </div>
-`
-const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
-const sourceTreeEl = document.querySelector<HTMLDivElement>('#source-tree')!
-const centerPaneEl = document.querySelector<HTMLDivElement>('.pane-center')!
-const canvases: charts.ChartCanvases = {
-  magnitude: document.querySelector<HTMLCanvasElement>('#chart-magnitude')!,
-  rta: document.querySelector<HTMLCanvasElement>('#chart-rta')!,
-  spectrogram: document.querySelector<HTMLCanvasElement>('#chart-spectrogram')!,
-  phase: document.querySelector<HTMLCanvasElement>('#chart-phase')!,
-  coherence: document.querySelector<HTMLCanvasElement>('#chart-coherence')!,
+function renderPanel(payload: SettingsPayload) {
+  currentSettingsUuid = payload.uuid
+  renderSettingsPanel(settingsPanelEl, payload, {
+    onChange: (name, value) => settings.setProperty(payload.uuid, name, value),
+    onResetAverage: () => settings.resetAverage(payload.uuid),
+    onStore: () => settings.store(payload.uuid),
+  })
 }
 
-function resizeCanvas(canvas: HTMLCanvasElement, height: number) {
-  const width = Math.max(1, centerPaneEl.clientWidth - 32)
-  canvas.width = width * devicePixelRatio
-  canvas.height = height * devicePixelRatio
-  canvas.style.width = `${width}px`
-  canvas.style.height = `${height}px`
-}
-function resizeAll() {
-  resizeCanvas(canvases.magnitude, 300)
-  resizeCanvas(canvases.rta, 220)
-  resizeCanvas(canvases.spectrogram, 220)
-  resizeCanvas(canvases.phase, 220)
-  resizeCanvas(canvases.coherence, 160)
-}
-window.addEventListener('resize', resizeAll)
-resizeAll()
-
-connectWebChannel((message) => { statusEl.textContent = message })
-
-channelReady.then(({ sourceTree, chartData }) => {
-  sourceTree.treeChanged.connect((json: string) => {
-    let items: TreeItem[]
-    try {
-      items = JSON.parse(json) as TreeItem[]
-    } catch (e) {
-      console.error('treeChanged parse error', e)
-      return
-    }
-    renderSourceTree(sourceTreeEl, items, {
-      onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
-      onSelect: (uuid) => charts.setSpectrogramSource(uuid, canvases.spectrogram),
-    })
-    charts.setActiveUuids(new Set(items.filter((i) => i.active).map((i) => i.uuid)), canvases)
-  })
-  sourceTree.requestTree()
-
-  chartData.magnitudeUpdated.connect((json: string) => {
-    try { charts.updateMagnitude(canvases.magnitude, JSON.parse(json)) } catch (e) { console.error('magnitudeUpdated parse error', e) }
-  })
-  chartData.phaseUpdated.connect((json: string) => {
-    try { charts.updatePhase(canvases.phase, JSON.parse(json)) } catch (e) { console.error('phaseUpdated parse error', e) }
-  })
-  chartData.coherenceUpdated.connect((json: string) => {
-    try { charts.updateCoherence(canvases.coherence, JSON.parse(json)) } catch (e) { console.error('coherenceUpdated parse error', e) }
-  })
-  chartData.rtaUpdated.connect((json: string) => {
-    try { charts.updateRTA(canvases.rta, JSON.parse(json)) } catch (e) { console.error('rtaUpdated parse error', e) }
-  })
-  chartData.spectrogramRowUpdated.connect((json: string) => {
-    try { charts.updateSpectrogramRow(canvases.spectrogram, JSON.parse(json)) } catch (e) { console.error('spectrogramRowUpdated parse error', e) }
-  })
-  chartData.sourceRemoved.connect((uuid: string) => {
-    charts.removeSource(uuid, canvases)
-  })
+settings.settingsChanged.connect((json: string) => {
+  try { renderPanel(JSON.parse(json) as SettingsPayload) } catch (e) { console.error('settingsChanged parse error', e) }
+})
+settings.meterUpdated.connect((json: string) => {
+  try { renderMeter(JSON.parse(json) as MeterPayload) } catch (e) { console.error('meterUpdated parse error', e) }
+})
+```
+6. 既存の`chartData.sourceRemoved.connect(...)`の中で、削除されたソースが現在設定パネルに表示中のソースなら選択解除する:
+```ts
+chartData.sourceRemoved.connect((uuid: string) => {
+  charts.removeSource(uuid, canvases)
+  if (currentSettingsUuid === uuid) {
+    renderPanel({ uuid: null })
+  }
 })
 ```
 
-`SeriesPayload`等の型定義・`drawSeries`等の描画関数は`charts.ts`に移したため、`main.ts`からは削除する。
-
 ## 実装8: `web/src/style.css`の追加分
 
-既存のスタイルに以下を追加する:
-
 ```css
-.tree-row {
+.settings-field {
+  margin-bottom: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.settings-field label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+.settings-field input,
+.settings-field select {
+  background: #111;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 0.3rem 0.4rem;
+  font-size: 0.85rem;
+}
+.settings-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.8rem 0;
+}
+.settings-actions button {
+  background: #222;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
   cursor: pointer;
 }
-
-.tree-row.selected {
-  background: rgba(33, 150, 243, 0.25);
+.settings-actions button:hover {
+  background: #333;
 }
-
-.tree-active {
-  flex: 0 0 auto;
-  margin: 0;
+.settings-meter {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 0.5rem;
 }
 ```
 
@@ -698,15 +477,17 @@ channelReady.then(({ sourceTree, chartData }) => {
 1. `cd web && npm run dev`を起動しておく。
 2. CLAUDE.mdの手順(終了→ビルド→起動)でビルドする。
 3. `OSM_JS_FRONTEND=1 OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`で起動する。
-4. QML側でMeasurementを複数(2〜3個)アクティブにし、JS側のMagnitude/RTA/Phase/Coherenceそれぞれに全ソース分の線が該当ソース色で重ね描きされ、左上に凡例(色+名前)が並ぶことを確認する。
-5. 左ペインのチェックボックスでいずれかのソースを非アクティブにすると、対応する線が即座にチャートから消えること(新しいデータが届くのを待たずに)を確認する。QML側のチェックボックスと状態が一致することも確認する。
-6. QML側からMeasurementを1つ削除すると、対応する線がJS側チャートから即座に消えることを確認する(`sourceRemoved`経由)。
-7. 左ペインのツリー行をクリックすると、その行がハイライトされ、Spectrogramがそのソースのデータのみに切り替わり、切り替え時に旧ソースの残像が残らず(バッファがクリアされ)描き直されることを確認する。
-8. `npm run build`(tscの型チェック含む)が通ること。
-9. `OSM_JS_FRONTEND`を設定しない通常起動で、既存機能に変化がないことを確認する(回帰確認)。
-10. Measurementを3〜5個同時にアクティブにして数分間動作させ、クラッシュ・著しいCPU/メモリ増加が無いか確認する(Phase 5完了メモの「5枚は動作確認済みの目安」を踏まえた参考値との比較でよい)。
+4. 左ペインでMeasurement行をクリックすると、右ペインに実際の値(Gain/Offset/Delay/Mode/Average type等)が表示されることを確認する。QML側の同じMeasurementのプロパティパネルと数値が一致することを確認する。
+5. Gainの数値を変更してEnterまたはフォーカスを外すと、実際の測定に反映され(QML側のGain表示も追従)、直後にサーバーからの応答(`settingsChanged`再送)でJS側の表示も更新されることを確認する。
+6. Average typeを`FIFO`に切り替えるとAverage countの入力欄が現れ、`LPF`に切り替えるとFilter frequencyの入力欄が現れることを確認する(相互排他)。Modeを`TFC`に切り替えるとTFC reference timeの入力欄が現れることを確認する。
+7. `mode`/`averageType`/`filtersFrequency`/`inputFilter`のenumプロパティが実際に書き込めることを個別に確認する(**前提のセクションで触れた検証ポイント**。もし特定のプロパティで反映されない場合は、そのプロパティ専用の`Q_INVOKABLE`セッターを`SettingsBridge`に追加するフォールバックを行うこと)。
+8. Reset Averageボタン・Storeボタンがそれぞれ動作すること(Storeで左ペインのツリーに新しいStoredアイテムが追加されることも確認する)を確認する。
+9. Stored/Groupの行を選択すると「◯◯の設定はまだ対応していません」のプレースホルダーが表示され、クラッシュしないことを確認する。
+10. Measurementを選択した状態でそのソースをQML側から削除すると、右ペインが「左のリストからソースを選択してください」に戻ることを確認する。
+11. `npm run build`(tscの型チェック含む)が通ること。
+12. `OSM_JS_FRONTEND`を設定しない通常起動で、既存機能に変化がないことを確認する(回帰確認)。
 
 ## 完了後の作業
 
-- [js-frontend-phases.md](js-frontend-phases.md)のPhase 7のタスクチェックリストにチェックを入れ、完了メモを追記し、進捗表を「完了」に更新する。あわせて、当初の「`sourceList.selectedChanged`受信でバッファをクリア」という記述を、実際に採用した「ツリー行クリックによるJSローカル選択」に修正する(Phase 8でSettingsBridgeと一緒に本格的な選択同期を導入する旨も明記する)。
-- [customizations.md](customizations.md)の「方針転換」節に、Phase 7で行った`DataBridge`のマルチソース対応・凡例表示・Spectrogramのローカル選択方式について追記する。
+- [js-frontend-phases.md](js-frontend-phases.md)のPhase 8のタスクチェックリストにチェックを入れ、完了メモを追記し、進捗表を「完了」に更新する。あわせて、既存のPhase 8セクションに書かれている`SettingsBridge`の設計案(`SourceList::selectedChanged`を使う案)を、実際に採用した「左ペインクリックによるJSローカル選択の流用」に更新する。
+- [customizations.md](customizations.md)の該当節に、Phase 8で追加した`SettingsBridge`・設定フォームの対象範囲(デバイス/チャンネル選択とキャリブレーションは対象外とした判断)を追記する。
