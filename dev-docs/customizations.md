@@ -346,3 +346,5 @@
 - `OpenSoundMeter.pro`: 新規C++ファイルを追加し、`web/dist/index.html`が存在する場合だけ`web/web.qrc`をリソースへ含める。これにより`npm run build`前でも通常のqmake/makeを壊さない。
 - `web/index.html`/`web/src/main.ts`/`web/src/style.css`: Qt内蔵の`qrc:///qtwebchannel/qwebchannel.js`を読み、`dataBridge.magnitudeUpdated`を購読して対数周波数軸のCanvasへ描画する。Qt内蔵スクリプトはVite dev serverとqrc同梱版の両方で動作確認できたため、npmパッケージ追加は不要だった。
 - ダークモード配色は`src/chart/palette.cpp`に合わせ、背景`#000000`、グリッド/枠線`rgba(255,255,255,0.157)`(`QColor(255,255,255,40)`相当)、文字`rgba(255,255,255,255)`、Magnitude線はソース色とした。
+- **レビュー修正: Measurementデータ読取時の競合を解消**: `Measurement::transform()`はワーカースレッドで周波数領域データを書き換えるため、`MagnitudeSeriesSampler::sampleJson()`の`frequencyDomainSize()`確認から`iterate()`完了までを`m_source->lock()`/`unlock()`で保護した。`readyRead()`がGUIスレッドへキュー配送された後に次の測定周期と重なっても、書換中の`m_ftdata`を読まない。
+- **レビュー修正: 無音帯域を0dBとして描画しない**: パワーが0の帯域で生じる非有限dBをC++側でJSONの`null`へ明示変換し、JS側の型を`(number | null)[]`へ変更した。Y軸範囲は有限値だけから計算し、`null`区間ではCanvasのパスを分断するため、無音/未接続帯域が0dBへスパイクしない。

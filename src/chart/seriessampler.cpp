@@ -26,26 +26,40 @@ const Shared::Source &MagnitudeSeriesSampler::source() const
 
 QString MagnitudeSeriesSampler::sampleJson(unsigned int pointsPerOctave)
 {
-    if (!m_source || !m_source->active() || !m_source->frequencyDomainSize()) {
+    if (!m_source || !m_source->active()) {
         return QString();
     }
 
     QJsonArray frequency, magnitudeDb;
     float value = 0.f;
+    bool hasData = false;
 
-    auto accumulate = [this, &value](const unsigned int &i) {
-        auto m = m_source->magnitudeRaw(i);
-        value += m * m;
-    };
+    m_source->lock();
+    if (m_source->frequencyDomainSize()) {
+        hasData = true;
 
-    auto collected = [&value, &frequency, &magnitudeDb](const float &bandStart, const float &bandEnd,
-                                                        const unsigned int &count) {
-        frequency.append((bandStart + bandEnd) / 2.0);
-        magnitudeDb.append(10.0 * std::log10(value / count));
-        value = 0.f;
-    };
+        auto accumulate = [this, &value](const unsigned int &i) {
+            auto m = m_source->magnitudeRaw(i);
+            value += m * m;
+        };
 
-    iterate(pointsPerOctave, accumulate, collected);
+        auto collected = [&value, &frequency, &magnitudeDb](const float &bandStart, const float &bandEnd,
+                                                            const unsigned int &count) {
+            auto db = 10.0 * std::log10(value / count);
+            frequency.append((bandStart + bandEnd) / 2.0);
+            // magnitudeRaw==0(無音/未接続)の帯域は-Infinityになる。JSONではnullにして、
+            // JS側で「データなし」として扱う。
+            magnitudeDb.append(std::isfinite(db) ? QJsonValue(db) : QJsonValue());
+            value = 0.f;
+        };
+
+        iterate(pointsPerOctave, accumulate, collected);
+    }
+    m_source->unlock();
+
+    if (!hasData) {
+        return QString();
+    }
 
     QJsonObject payload;
     payload["sourceName"] = m_source->name();

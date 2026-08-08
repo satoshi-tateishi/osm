@@ -4,7 +4,7 @@ interface MagnitudePayload {
   sourceName: string
   color: string
   frequency: number[]
-  magnitudeDb: number[]
+  magnitudeDb: (number | null)[]
 }
 
 declare const qt: any
@@ -57,13 +57,14 @@ function drawMagnitude(payload: MagnitudePayload) {
     ctx.stroke()
   }
 
-  if (!payload.frequency.length) {
+  const finiteDb = payload.magnitudeDb.filter((v): v is number => v !== null && Number.isFinite(v))
+  if (!finiteDb.length) {
     ctx.restore()
     return
   }
 
-  const magMin = Math.min(...payload.magnitudeDb)
-  const magMax = Math.max(...payload.magnitudeDb)
+  const magMin = Math.min(...finiteDb)
+  const magMax = Math.max(...finiteDb)
   const pad = (magMax - magMin) * 0.1 || 1
   const yMin = magMin - pad
   const yMax = magMax + pad
@@ -72,11 +73,21 @@ function drawMagnitude(payload: MagnitudePayload) {
   ctx.strokeStyle = payload.color || '#3F51B5'
   ctx.lineWidth = 1.5
   ctx.beginPath()
+  let penDown = false
   payload.frequency.forEach((f, idx) => {
+    const db = payload.magnitudeDb[idx]
+    if (db === null || !Number.isFinite(db)) {
+      penDown = false
+      return
+    }
     const x = xForFreq(f, cw)
-    const y = yForDb(payload.magnitudeDb[idx])
-    if (idx === 0) ctx.moveTo(x, y)
-    else ctx.lineTo(x, y)
+    const y = yForDb(db)
+    if (!penDown) {
+      ctx.moveTo(x, y)
+      penDown = true
+    } else {
+      ctx.lineTo(x, y)
+    }
   })
   ctx.stroke()
 

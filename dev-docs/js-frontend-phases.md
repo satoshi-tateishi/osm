@@ -84,6 +84,9 @@ Phase 1(Magnitude単体疎通)まで完了。
 - JS版は`OSM_JS_FRONTEND`設定時だけ生成される別ウィンドウとし、`OSM_JS_DEV_SERVER`設定時だけViteへ接続する。未設定時の既存QML起動シーケンスは変更していない。
 - Canvasとページ背景は`rgb(0, 0, 0)`、グリッド/枠線は`rgba(255, 255, 255, 0.157)`であることをDevTools Protocolから確認した。ソース色のMagnitude線と白文字を描画する。
 - `npm run build`、Qt 5.15.2でのqmake/make、qrc同梱起動に成功した。`web/dist`を一時退避した状態でも`exists(web/dist/index.html)`ガードによりqmake/makeが成功し、検証後に`dist`を復元した。
+- Phase 1完了後のレビューで、Measurementのワーカースレッドが次フレームを書き換えている間にGUIスレッドのサンプラーが同じ周波数領域データを読む競合を確認した。`frequencyDomainSize()`の確認から`iterate()`完了までを`Abstract::Data::lock()`/`unlock()`で保護し、既存`SeriesRenderer`と同じ排他パターンに修正した。
+- 無音/未接続時に`10 * log10(0)`が`-Infinity`となる帯域は、C++側で明示的にJSONの`null`へ変換する。JS側は有限値だけでY軸範囲を計算し、`null`の前後で描画パスを分断することで、無音区間が0dBへスパイクする問題を防止した。
+- 修正版のqrc同梱ページを約2分連続動作させ、クラッシュ・フリーズなく119点の更新が継続することを確認した。検証時の無音入力は119点すべてが`null`で、Canvas内のソース色画素は0件だったため、0dBスパイクを描かずグリッドだけが残ることも確認できた。
 
 ---
 
