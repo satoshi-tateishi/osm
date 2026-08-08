@@ -9,3 +9,5 @@
 - [systune-rtd.md](systune-rtd.md) — 競合製品SysTuneの特許技術「Real-Time Deconvolution (RTD™)」調査メモ
 - [tfc-window-implementation-plan.md](tfc-window-implementation-plan.md) — TFC Window(周波数依存窓関数)をOSMに実装するための設計プラン
 - [tfc-window-phases.md](tfc-window-phases.md) — TFC Window実装をPhase分割した進捗管理用ドキュメント
+- [js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) — フロントエンドをQMLからJS(QtWebEngine+QWebChannel)へ作り替える移行計画
+- [js-frontend-phases.md](js-frontend-phases.md) — フロントエンドJS化移行をPhase分割した進捗管理用ドキュメント

@@ -1,0 +1,23 @@
+:root {
+  font: 16px/145% system-ui, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem;
+  background: #000000;
+  color: #ffffff;
+}
+
+#status {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+#chart {
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.157);
+  margin-top: 0.5rem;
+}

@@ -267,3 +267,82 @@
 - **バグ修正: Groupが先頭にあるとき、単体データをGroupより上へ移動できない**: `DropArea.onEntered`が、ホバー対象がGroupの場合に並び替え処理そのものをスキップ(`return`)していたため、Groupの上を通過すること自体ができず、Groupが一番上にある場合は「その上に出す」手段が無かった。Group上をホバーしても通常の行と同様に`sources.move()`で並び替えを行うようにし、実際にGroupの上へ「格納」する動作は release 時の`DropArea.onDropped`(`moveToGroup`)のみに限定した。これにより、Groupの直前直後へ普通に並び替えられ、実際にGroup内へ格納したい場合はGroupの上で指を離す(ドロップする)操作で区別する。
 - **バグ修正: 各チャート(Magnitude/Phase等)プロパティの「show only selected sources」ドロップダウンに、データ列(Stored/Group)の値まで表示されてしまう**: 3カラム化以前は気づきにくかったが、この一覧(`qml/elements/Select.qml`)は`unrollGroups: true`でルートの`sourceList`をそのまま辿るため、Group内にネストされた`Stored`もすべて平坦化されて選択肢に混ざっていた(グループ化に伴い顕在化)。この一覧はチャートに表示する「測定」を選ぶためのものであり、`Stored`/`Group`/`RemoteStored`/`RemoteGroup`(データ列の型)は対象外とすべきなので、`SourceModel`に`excludeData`プロパティ(新設)を追加し、`Select.qml`側で`true`に設定。C++側は`SourceList::clone()`/`appendItemsFrom()`に`excludeData`引数を追加し、新設の`SourceList::isDataSource()`(objectNameが`Stored`/`Group`/`RemoteStored`/`RemoteGroup`のいずれかを判定、`qml/SourceLayout.qml`の`isDataType`判定と同じ基準)に該当する項目を一覧生成時にスキップするようにした。`UnionProperties.qml`等、他の箇所で使われる`SourceModel`(Union/Windowingのソース選択など、Storedも選択対象に含めたいケース)は`excludeData`を指定していないため影響なし。
   - `Plot/SpectrogramProperties.qml`の「show only this source」は共通の`Select.qml`要素を使わず`SourceModel`を直接インスタンス化していたため、上記修正だけでは漏れていた。こちらにも同様に`excludeData: true`を追加。
+- **UI調整: top level(ルート)にあるデータの「移動」メニューに「Move to top level」が表示されていた問題を修正**: `SourceLayout.qml`の各行は`sources`プロパティで現在表示中の階層(ルートの場合は`sourceList`、Group内をドリルダウン中はそのGroup自身の`sourceList`)を保持しているため、`Labs.MenuItem`(「Move to top level」)に`visible: sources !== sourceList`を追加し、既にルート直下にある項目では無意味な選択肢を出さないようにした(この後さらに大きくUI刷新したため、下記のインライン展開化で「move」メニュー自体を廃止済み)。
+
+## データカラムUI刷新: Groupのインライン展開・移動のDnD一本化・右クリック削除(ユーザー要望)
+
+`qml/SourceLayout.qml`、`qml/source/Group.qml`、`src/sourcelist.h`/`.cpp`
+
+対象は**データカラム(Stored/Group)のみ**。測定カラム(Measurement/Union/Filter/Equalizer/Windowing/StandardLine)とEqualizerの既存ドリルダウン(StackView)、およびリモート由来の項目(RemoteGroup/RemoteStored。このフォークでは未使用)は変更していない。
+
+- **Groupのドリルダウンをインライン展開に変更**: 従来Groupをダブルクリックすると`StackView`で別ページへ「ドリルダウン」していたが、`Group.qml`の見出し行左端に`▶`/`▼`の開閉アイコンを追加し、クリックでその場に子要素をインデント表示するようにした(`expanded`はセッション内のみのUI状態で、JSONには保存しない)。
+  - `Group.qml`は展開時、**自分自身と同じ`SourceLayout.qml`を再帰的にロードして**子リスト(`sharedGroup.sourceList`)を表示する。ただし`SourceLayout.qml`自身が行コンポーネントとして`qml/source/`(`Group.qml`を含む)をディレクトリインポートしているため、`Group.qml`から`SourceLayout`型を直接参照するとQMLが循環インポートとしてロードを拒否する(`Cyclic dependency detected between "qrc:/SourceLayout.qml" and "qrc:/source/Group.qml"`)。これを避けるため`Loader { source: "qrc:/SourceLayout.qml" }`というURL経由の動的ロードにし、`onLoaded`内で`Qt.binding()`を使って`sources`/`depth`/`parentGroupUuid`/`multiSelectScope`等のプロパティを後付けで結線している(型としての静的インポートを発生させないため)。
+  - `SourceLayout.qml`に`depth`(ネスト段数、インデント幅の計算に使用)、`parentGroupUuid`(自分を直接含むGroupのUUID、ルート直下なら空文字)、`multiSelectScope`(後述)を追加し、`groupDelegate`のインスタンス化時に`sideList.depth`/`sideList.multiSelectScope`をそのままGroup行へ渡し、`Group.qml`が自分の子の`SourceLayout`へさらに`+1`して伝播することで、何階層ネストしても同じ仕組みで動く。
+  - Group行自身の高さは`ヘッダー50px + (展開時のみ)ネストしたSourceLayoutのcontentHeight`とし、既存の`Behavior on height`(200ms)がそのまま展開/格納アニメーションになる。
+  - `onDoubleClicked`の分岐から`"Group"`を除去(`RemoteGroup`/`Equalizer`は引き続き`hostStack.openGroup()`でドリルダウン)。
+- **「move to group」ボタン(``アイコン+グループ一覧メニュー)を廃止し、移動はDrag&Dropのみに一本化**: `moveButton`とその中の`Labs.Menu`(グループ一覧を動的生成していた`Instantiator`含む)を削除し、専用だった`SourceList::groupList()`(C++)も削除した(他に呼び出し元がないことを確認済み)。
+  - 複数階層が同時に画面上に見えるようになったため、`DropArea`のロジックを「同一リスト内の並び替え」と「階層をまたぐ格納/取り出し」で分離: ホバー中(`onEntered`)はドラッグ元と同じ`sources`(`dragArea.rowSources`という新設プロパティで比較)の場合のみ位置入れ替え(`sources.move()`)を行い、異なる階層をホバーしているだけでは何もしない(実際の格納/取り出しは必ず明示的なドロップで行う、という既存方針の踏襲)。
+  - ドロップ確定時(`onDropped`)、ドロップ先がGroupの見出し行なら: ドラッグ元が**まさにそのGroup自身の子**なら「一段上の階層へ出す」(`sourceList.moveItem(uuid, sideList.parentGroupUuid)`)、そうでなければ「そのGroupへ格納する」(`sourceList.moveItem(uuid, dragArea.source.data.uuid)`)という一貫したルールにした。ルートの`sourceList`から呼ぶ前提の既存`moveItem()`(ツリー全体を再帰的に辿る)を使うことで、深さの異なる階層間の移動も正しく処理できる。深い階層から一気にルートへ戻すショートカットは提供しない(1階層ずつドラッグする)。
+- **ゴミ箱アイコンを廃止し、右クリックのコンテキストメニューに「Delete」を配置**: `deleteButton`に`visible: !dragArea.isDataType`を追加してデータ行では非表示にし(測定カラムは従来通りボタン表示)、データ行の右クリックで`Labs.Menu`(`contextMenu`)を`open()`するようにした。削除確認ダイアログ(`applicationWindow.dialog`)は既存の単体削除と同じ流用パターン。
+  - 動作確認時、`contextMenu.popup()`ではメニューが表示されなかった(このコードベースの他箇所で実績のある`open()`と違い、`Qt.labs.platform.Menu`で期待通りに動作しなかった)。`open()`に修正して解消。
+- **複数選択(既存のShift/Ctrlクリック)からの右クリック一括削除に対応**: インライン展開で複数階層が同時に見えるようになったことに合わせ、複数選択の状態管理を`SourceLayout.qml`の新設プロパティ`multiSelectScope`(既定値は自分自身の`sources`、Group行の子孫へは常にルートの`sourceList`まで同じ値が伝播する)に切り出し、データカラムに限りツリー全体で1つの選択集合として扱われるようにした(測定カラム・Equalizerドリルダウンは`multiSelectScope`が既定値のままなので挙動は変わらない)。
+  - 右クリックしたときそれが現在の複数選択に含まれていなければ単独選択に切り替え(一般的なファイルマネージャーと同様)、含まれていれば複数選択を維持したままコンテキストメニューを開く。
+  - 複数選択中(`multiSelectScope.multiSelectedCount > 1`)は「Delete N items」を表示し、`SourceList`に新設した`Q_INVOKABLE void removeMultiSelected()`を呼ぶ。これは選択中の各UUIDを`getByUUid()`(既存・ツリー全体を再帰的に検索)で解決し、`removeItemFromTree()`(既存、`moveItem()`が「取り除くだけで削除しない」用途で使っていたヘルパー)に`deleteItem`引数を追加して実際に削除できるようにしたものを使う。どの階層にある項目が混ざっていても正しく削除できる。
+
+### 動作確認後の修正
+
+- **バグ修正: Groupを展開しても中身が表示されない**: `Group.qml`の子リストは循環インポート回避のため`Loader { source: "qrc:/SourceLayout.qml" }`でURL経由ロードしているが、`item.height`を明示的に結線し忘れていた。`ListView`は無指定だと`height`が0のままレイアウトされる(`contentHeight`自体は正しく計算されていても、実際の表示領域がゼロになるため何も見えない)。`onLoaded`内で`item.height = Qt.binding(() => item.contentHeight)`を追加して解消。
+- **バグ修正: データをGroupの上にDrag&Dropしようとすると、格納より先に並び替えが発動して格納できない**: `DropArea.onEntered`(ホバー中の並び替え)は改修前から「Groupを含めて常に並び替える、格納は実際のドロップ(`onDropped`)のみで行う」という設計だったが、ホバーのたびにGroup自身の表示位置がずれてカーソルの下から逃げてしまい、`onDropped`が発火する前にホバー対象が別の行に変わってしまうため、実質的にGroupへドロップし切ることができなかった。`onEntered`の並び替え条件に`dragArea.source.objectName !== "Group"`を追加し、**Groupの上をホバーしている間は並び替えを行わない**(Groupの行が動かず静止するので、そのままドロップして格納できる)ようにした。Groupのすぐ上/下に並び替えたい場合はGroups自身ではなく隣接する行の上でドロップすればよい。
+- **バグ修正: Group内のデータを外へ出すDnDが、Groupの上側(見出し行)へは出せるが下側へは出せない**: 展開中のGroupから子を取り出す処理(`onDropped`)は「ドロップ先がGroupの見出し行そのもの」の場合しか一段上へ出すロジックが無かった。Groupの一番下の子より下(=Group自身の外、親リストの次の兄弟行)へドラッグした場合、そこはGroupではないただの行なので該当条件に入らず、何も起きなかった。`onDropped`に「ドロップ先が(Groupではない)通常行で、かつドラッグ元の所属リストがドロップ先の所属リストと異なる場合は、ドロップ先の所属リストへ合流する」という分岐を追加し、Group見出しへのドロップに限らずGroup外のどの行へドロップしても正しく取り出せるようにした(結果的に、よそのGroupの子行へ直接ドロップして格納することも可能になった)。
+- **UI追加→再設計: ドラッグ中、ドロップ先候補を半透明でプレビュー表示**(ユーザー要望、移動先の視認性向上): 当初は各行の`DropArea`にドラッグ元の色で塗った半透明`Rectangle`を重ねるだけの実装にしたが、動作確認で以下3件の不具合が見つかったため、DnDのヒットテスト自体を「ホバー中は何も動かさず、ドロップ時に一度だけ確定させる」方式に設計し直した:
+  1. Groupがデータカラムの先頭にあるとき、その上に並び替えできない(Groupへの格納ハイライトしか出ない)。
+  2. Group直下(親リスト)に単体データが1件あるとき、Groupから取り出した項目をその単体データの上に置けず、必ず下に置かれる。
+  3. Groupがデータカラムに1つだけ(かつ展開中)のとき、中の子を「Groupの下」へ出そうとしてもプレビューが出ず移動できない。
+  - 根本原因は、「Group行=格納先、それ以外の行=並び替え先」という行単位の二択しかなく、かつGroup行に対しては(前々回の修正で)ホバー中の並び替えを完全に無効化していたため、**Groupが先頭/末尾/唯一の行のとき、その上や下に置くための「隣の行」自体が存在しない**ケースを表現できなかったこと。
+  - `SourceLayout.qml`の`rowDropArea`(旧`onEntered`での即時`sources.move()`)を廃止し、`onPositionChanged`で`drag.y`(行内の縦位置)に応じて`dropZone`("before"/"into"/"after")を継続的に判定するようにした: Group行は上下25%ずつが「before」「after」(単純な並び替え/一段外への移動)、中央50%が「into」(格納/一段上に出す)。Group以外の行は上半分/下半分で「before」/「after」のみ。**実際の移動は`onDropped`一度きり**で、直前の`dropZone`に基づいて`sources.move()`(同一リスト内)または`sourceList.moveItem()`+`sources.move()`(別リストへ合流後、ドロップ位置に正確に並べ直す)を行う。これにより(1)(2)が解消: Group行の上端/下端が独立した並び替えターゲットになり、また別リストへ合流したあとも`moveItem()`の末尾追加(append)だけで終わらせず、ドロップ位置のインデックスへ`move()`し直すようにした。
+  - プレビュー表示も「into」は行全体の半透明塗り、「before」/「after」は該当する上端/下端に薄い挿入線、という2種類に変更(いずれもドラッグ元の色で着色)。
+  - (3)は上記だけでは解決しない: 展開中のGroupが唯一の最上位行だと、子を一番下まで運んでもその外側(=Group自身の兄弟レベル)に対応する行が物理的に存在せず、ドロップ先を用意できない。`Group.qml`にネストした子リストの直後だけに存在する高さ10pxの専用`DropArea`(`trailingDrop`、展開中のみ有効)を追加し、「このGroupの直後(=Groupを含んでいる側のリスト)に挿入する」動作を明示的に提供した。これに伴い`Group.qml`へ`containingList`(このGroup自身を含む親リスト)・`containingParentGroupUuid`(そのリストの、さらに親であるGroupのUUID)を新設し、`SourceLayout.qml`の`groupDelegate`から`sideList.sources`/`sideList.parentGroupUuid`をそのまま渡すようにした。
+- **UI調整(ユーザー要望): 階層のインデント幅を拡大、Groupはデフォルト展開**
+  - インデント幅(`SourceLayout.qml`の`content`の`leftMargin`/`width`調整に使う`sideList.depth`の係数)を16pxから32pxに拡大。Group自身の行には見出し左端に開閉三角(`disclosure`、幅16px)があるため、旧16px幅だと子(depth+1)のチェックボックスがGroup自身のチェックボックスとほぼ同じX位置に来てしまい(三角の分だけGroup側が右にずれるため相殺されてしまう)、親子関係が視覚的に分かりにくかった。32pxに広げることで、子のチェックボックスが常にGroup自身のチェックボックスより明確に右側に来るようにした。
+  - `Group.qml`の`expanded`の初期値を`false`から`true`に変更(デフォルトで展開表示、折りたたみは引き続き開閉三角から可能)。
+  - **Group外の単体データのチェックボックス位置をGroupのチェックボックスに揃える**(ユーザー要望): `Stored.qml`はGroupの開閉三角に相当するものを持たないため、同じ階層でGroupと並ぶとチェックボックスの位置が三角の幅(16px)分だけ左にずれて見えていた。`Stored.qml`のチェックボックスの手前に同じ幅(`Layout.preferredWidth: 16`)の透明な`Item`を追加し、Groupの有無に関わらずチェックボックスの位置が揃うようにした。
+### Groupの移動が不安定な問題への対応(SortableJS的な挙動を目指して再設計)
+
+動作確認で、Groupの移動(単体データの移動は問題なし)に3つの不具合が報告された:
+1. データカラム最下部の単体データの下へGroupを移動しようとしても、最下部ではなく別の場所に移動してしまう。
+2. データカラム最上部の単体データの上へGroupを移動しようとしても、挿入位置バーが出ず、その単体データ行がハイライトされるだけになる。
+3. Group内に複数のデータがある場合、Group内での並び替えができず、Group外にデータが移動してしまう。
+
+原因は2つ複合していた:
+
+- **原因A(1・2の主因): `Drag.hotSpot.y: height / 2`が、ドラッグ中のGroup自身の高さに依存していた**。展開中のGroupの`content`の高さは「ヘッダー50px + 子要素の高さ」であり、子を多く持つほど非常に大きくなる。ドラッグ判定に使われる実際の基準点(`Drag.hotSpot`)がその高さの半分の位置になるため、Groupをドラッグすると実際のマウスカーソル位置と判定基準点が大きくズレてしまい(子が多いほどズレも大きい)、カーソルを最下部/最上部に持っていっても正しい行のドロップ判定に届かなかった。`Drag.hotSpot.y`を`height / 2`から固定値`25`(通常行の半分の高さ)に変更し、行の高さに関わらず基準点がカーソル位置に一致するようにした。
+- **原因B(3の原因): Group行自身の`DropArea`が`anchors.fill: parent`で、展開時はGroup全体(ヘッダー+全子要素)を覆う大きさになっていた**。子要素は別途ネストした`SourceLayout`が自前の`DropArea`を持っているにも関わらず、外側のGroup行の`DropArea`がヘッダーだけでなく子要素の領域まで覆ってしまうため、子同士を並び替えようとホバーしても「Group自身への出し入れ」(`dropZone === "into"`)と誤判定され、並び替えの代わりに「このGroupから出す」処理が発動していた。Group行自身の`DropArea`をヘッダー相当の50px(`height: Math.min(parent.height, 50)`)に制限し、それより下の子要素の領域は完全に子自身の`DropArea`に委ねるようにした(挿入位置バー自体は`content`基準で表示するため、展開中のGroupでも「after」は子要素も含めた全体の下端に正しく表示される)。
+
+あわせて、ユーザーから「SortableJSのような滑らかな挙動にしたい」「Group内での並び替えも実現したい」との要望を受け、DnDのヒットテスト方式を以下のように整理した:
+- 各行のホバー判定を`drag.y`に応じて`before`/`into`/`after`の3ゾーンに分割(Group行は上下25%が`before`/`after`、中央50%が`into`。Group以外の行は上半分/下半分で`before`/`after`のみ)。
+- **同一リスト内の`before`/`after`は、ホバー中に即座に(`onPositionChanged`でゾーンが変わるたびに)`sources.move()`で並び替える**(SortableJS的な、動かしながらその場で入れ替わっていく感覚を復元)。ズームせず、ゾーンが変化した時だけ動かす(`dropZone`が前回と同じ値なら何もしない)ことで、無駄な再計算・ちらつきを避けている。
+- **別リストへの移動(Groupへの格納/取り出し)と`into`は、従来通りドロップ時(`onDropped`)にのみ確定する**(ホバー中は動かさない)。ドラッグ中の行を別リストへライブで付け替えるとその場でデリゲートが破棄・再生成されてしまいドラッグ操作自体が中断するため、これは今回も変えていない。
+  - **バグ修正: 上記の導入直後、DnDでGroupへ格納すること自体が完全にできなくなった**: `onDropped`に追加した「同一リスト内の`before`/`after`は`updateZone()`で処理済みなので早期return」というガードが、`drag.source.rowSources === sources`(同じリストに属するか)だけを見て`dropZone`の値を見ていなかったため、**同じ階層にある単体データをGroupへ格納しようとするケース(`dropZone === "into"`だが、ドラッグ元とGroupが同じ親リストに属する)まで早期returnで無視してしまっていた**。ガード条件に`dropZone !== "into"`を追加し、`into`のときは同一リストかどうかに関わらず必ず格納/取り出し処理へ進むように修正した。
+
+- **UI追加(ユーザー要望): Groupのチェックボックスを外すと、中のデータのチェックボックスの色をチェック状態は変えずグレーにする**: `SourceLayout.qml`/`Stored.qml`/`Group.qml`に`dimmed`プロパティ(既定`false`)を新設し、`storedDelegate`/`groupDelegate`経由で`sideList.dimmed`をそのまま子へ渡すリレー方式にした(`depth`/`multiSelectScope`と同じパターン)。`Group.qml`はネストした子リストへ`item.dimmed`を`group.dimmed || !sharedGroup.active`(自分がすでにdimmedされているか、自分自身のチェックボックスがOFFか)としてバインドすることで、祖先のいずれかが非アクティブなら子孫すべてが連鎖してグレーになる。`Stored.qml`/`Group.qml`双方の`checkedColor`を`dimmed ? "grey" : 本来の色`に変更(チェック状態自体を左右する`active`/`checked`は一切変更していない)。`onColorChanged`時に`checkedColor`を直接上書きしていた既存の`Connections`ハンドラも同様に`dimmed`を考慮するよう修正(そうしないと色変更のたびにグレー表示が本来の色で上書きされてしまうため)。
+
+## フロントエンドJS化 Phase 0(環境構築)の実施
+
+[js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md)・[js-frontend-phases.md](js-frontend-phases.md)参照。QMLチャートをJS(QtWebEngine+QWebChannel)へ置き換える移行の第一段階として、開発基盤を整備した。
+
+- `~/Qt/5.15.2/clang_64`に`aqtinstall`で`qtwebengine`モジュールを追加導入(`aqt install-qt mac desktop 5.15.2 clang_64 -m qtwebengine --outputdir ~/Qt`)。`--outputdir`を指定しないとカレントディレクトリ配下に別のQtツリーが新規作成されてしまう点に注意(実際に一度誤って`~/5.15.2`へ作成してしまい、削除してやり直した)。導入されたChromiumバージョンは83.0.4103.122。
+- `OpenSoundMeter.pro`の`QT +=`に`webenginewidgets webchannel`を追加。既存ソースは未変更のままシャドウビルドでリンクが通ることを確認済み(`otool -L`で`QtWebEngineWidgets`/`QtWebEngineCore`/`QtWebChannel`のリンクを確認)。
+- リポジトリ直下に`web/`(Vite + TypeScript、vanillaテンプレート)を新規追加。デモ用のロゴ・カウンター等は削除し、疎通確認用の最小限の内容に置き換えた。`vite.config.ts`で`base: './'`(qrc同梱時の相対パス解決用)と、ビルド成果物のファイル名からキャッシュバスティング用ハッシュを除去する設定(`.qrc`を固定内容にできるようにするため)を行った。
+- `web/web.qrc`にqrc同梱用のテンプレートを作成したが、`web/dist/`(`npm run build`の出力)は`npm run build`実行後にしか存在しないため、**`OpenSoundMeter.pro`の`RESOURCES`にはまだ追加していない**(追加すると`npm run build`未実行時に`make`が失敗するため)。`QWebEngineView`の実アプリへの組み込みはPhase 1で行う。
+- `QWebEngineView`↔Vite dev server(`localhost:5173`)の疎通・ホットリロード、`QTWEBENGINE_REMOTE_DEBUGGING`によるChrome DevTools Protocol接続(`/json/version`・`/json`の応答を確認)、`qrc:/`同梱ビルドでの読み込みは、いずれも本体`src/main.cpp`を変更せずスクラッチ領域の最小Qt Widgetsプロジェクトで検証した(Phase 1で設計する`DataBridge`+QWebChannel登録を先取りしないため)。
+
+## フロントエンドJS化 Phase 1(Magnitude単体疎通)の実施
+
+[js-frontend-phases.md](js-frontend-phases.md) Phase 1参照。既存QML UIを残したまま、Magnitude 1チャート・Measurement 1ソースの最小構成でC++の測定データからJS Canvasまでの垂直スライスを追加した。
+
+- 新規`src/chart/seriessampler.h`/`.cpp`: `FrequencyBasedSeriesHelper::iterate()`を流用し、既存MagnitudeレンダラーのdBモードと同じパワー加算→`10 * log10(value / count)`で、スプライン適用前のバンド中心周波数とMagnitude値をJSON化する。
+- 新規`src/chart/databridge.h`/`.cpp`: Measurementの`readyRead()`を受けてサンプリングし、QWebChannel公開シグナル`magnitudeUpdated(QString)`でJSへpushする。Phase 1では意図的に1ソース固定とし、複数パネル/複数ソースのライフサイクル設計はPhase 5へ残した。
+- `src/main.cpp`: `OSM_JS_FRONTEND`が設定された場合だけ`QWebEngineView`、`QWebChannel`、`DataBridge`を生成する。未設定時は従来どおりQML UIだけを起動するため既存ユーザーへの挙動変更はない。`OSM_JS_DEV_SERVER`も設定されていれば`http://localhost:5173/`、なければ`qrc:/web/index.html`を読む。
+- `OpenSoundMeter.pro`: 新規C++ファイルを追加し、`web/dist/index.html`が存在する場合だけ`web/web.qrc`をリソースへ含める。これにより`npm run build`前でも通常のqmake/makeを壊さない。
+- `web/index.html`/`web/src/main.ts`/`web/src/style.css`: Qt内蔵の`qrc:///qtwebchannel/qwebchannel.js`を読み、`dataBridge.magnitudeUpdated`を購読して対数周波数軸のCanvasへ描画する。Qt内蔵スクリプトはVite dev serverとqrc同梱版の両方で動作確認できたため、npmパッケージ追加は不要だった。
+- ダークモード配色は`src/chart/palette.cpp`に合わせ、背景`#000000`、グリッド/枠線`rgba(255,255,255,0.157)`(`QColor(255,255,255,40)`相当)、文字`rgba(255,255,255,255)`、Magnitude線はソース色とした。

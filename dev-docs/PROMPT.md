@@ -1,68 +1,159 @@
-# 修正プロンプト: TFC Window — Phase 4のレイアウト不具合修正 + reference frequencyの固定化
+# 修正プロンプト: Phase 1 — データ競合の解消と無音時のnull処理
 
-このファイルは、実装済みのPhase 4(QML UI)に対する2件の修正指示。ユーザーによる実機確認で見つかった不具合1件と、設計方針の変更1件を含む。
+Phase 1(Magnitude単体疎通)の実装をレビューし、修正が必要な問題が2件見つかった。Phase 2に進む前にここで直しておく(Phase 2のPhase/Coherence用サンプラーも同じパターンを複製するため、放置すると同じ不具合が増殖する)。
 
 ## 前提
 
-Phase 1〜4のコードは動作としては成立している(実機起動・TFCモード選択・チャート表示まで確認済み)。今回の修正は「動かないバグ」ではなく、UIの見た目の不具合と、UI設計そのものの簡素化。
+レビューは実機ビルド・起動・CDP経由でのCanvas描画確認まで行い、パイプライン自体(QWebChannel接続・`magnitudeUpdated`受信・Canvas描画)は正しく動作していることを確認済み(ユーザー指示により、QML版との突き合わせ検証はここでは行っていない)。以下はコードレビューで見つかった、実行時に問題を起こしうる箇所。
 
-## 修正1: reference time/frequencyスピンボックスのインジケータ(+/-ボタン)が入力欄と重なる
+## 修正1(重要): `MagnitudeSeriesSampler::sampleJson()`がソースデータをロックせずに読んでいる
 
-**現象(ユーザー提供のスクリーンショットで確認)**: `qml/source/MeasurementProperties.qml`に追加した`tfcReferenceTimeSpinBox`/`tfcReferenceFrequencySpinBox`(2つとも`Layout.preferredWidth: elementWidth`、`indicators`未指定=デフォルト`true`)は、幅が狭いため増減インジケータボタンが数値テキストと重なって表示される。
+**問題**: `src/chart/seriessampler.cpp`の`sampleJson()`は`m_source->magnitudeRaw(i)`・`frequencyDomainSize()`等を、`m_source->lock()`を取得せずに読んでいる。
 
-**原因**: 同ファイル内の`offsetSpinBox`/`gainSpinBox`(222-250行目)は同じ`FloatSpinBox`コンポーネントを使いながら`indicators: false`を明示しており、増減ボタンを出さずテキスト入力のみにすることで、狭い幅でも重ならないようにしている。今回追加した2つのスピンボックスにはこの指定が漏れていた。
+**根拠**: `src/chart/opengl/seriesrenderer.cpp`(211〜213行目)は同じデータを読む`renderSeries()`の呼び出しを必ず`m_source->lock(); renderSeries(); m_source->unlock();`で挟んでいる。`Measurement::transform()`(`src/source/measurement.cpp`)は専用スレッド`m_timerThread`上で動作し、`lock(); …(m_ftdataの更新)…; unlock(); emit readyRead();`という順序でデータを更新してからシグナルを出す。`DataBridge::onReadyRead()`はデフォルトの`Qt::AutoConnection`によりGUIスレッドでキュー経由実行されるため、`emit`された時点から実際にスロットが実行されるまでにタイムラグがあり、その間に次の80ms周期の`transform()`が既に`m_ftdata`の書き換えを始めている可能性がある。ロックなしで`std::vector`(`Abstract::Data::m_ftdata`)を読むと、書き換え中の読み取りという未定義動作(最悪クラッシュ)になりうる。`Data::lock()`/`unlock()`は`std::mutex m_dataMutex`(`src/abstract/data.h`)を介しており、`setFrequencyDomainData()`自体はロックを取らず、呼び出し側(`Measurement::transform()`)の`lock()`/`unlock()`に依存する設計になっている。
 
-**修正方法**: `tfcReferenceTimeSpinBox`(修正2でreference frequency側は削除するため、実質こちらのみ残る)に`indicators: false`を追加する。`offsetSpinBox`/`gainSpinBox`と同じ見た目・操作感に揃える。
+**修正方法**: `src/chart/seriessampler.cpp`の`sampleJson()`で、`frequencyDomainSize()`のチェックから`iterate()`呼び出しまでを`m_source->lock()`/`m_source->unlock()`で囲む(`seriesrenderer.cpp`と同じパターン)。`active()`は`std::atomic<bool>`(`src/abstract/source.h`)なのでロック不要、この判定だけロックの外に残してよい。
 
-## 修正2: reference frequencyをユーザー調整不可にし、1000Hz固定にする
+```cpp
+QString MagnitudeSeriesSampler::sampleJson(unsigned int pointsPerOctave)
+{
+    if (!m_source || !m_source->active()) {
+        return QString();
+    }
 
-**背景**: `dev-docs/systune-rtd.md`の調査メモ(ProSoundWebのSysTune技術記事の要約)によれば、「ユーザーが操作するのは基準周波数(例: 1kHz)における窓長という**1つのスケールパラメータのみ**」とされており、SysTune本家でも基準周波数自体はユーザー操作対象ではなく固定値(1kHz)である可能性が高いと判断した(AFMGの一次資料までは確認できていないが、1kHzは音響測定における標準的な基準周波数でもあり、妥当な設計判断)。数式`C = T_ref[s] × f_ref`は`f_ref`を固定しても`T_ref`だけで実用上必要な表現力を保てる。
+    QJsonArray frequency, magnitudeDb;
+    float value = 0.f;
+    bool hasData = false;
 
-この判断に基づき、**reference frequencyをユーザーが調整できるプロパティとして持つ設計をやめ、1000Hz固定の内部定数にする**。中途半端に「値は保持するがUIだけ隠す」のではなく、以降のコードに残る混乱を避けるため、Phase 1(`FourierTransform`)を除く上位層から`tfcReferenceFrequency`関連のプロパティ・シグナル・永続化コードを削除する。
+    m_source->lock();
+    if (m_source->frequencyDomainSize()) {
+        hasData = true;
 
-### 変更しないもの
+        auto accumulate = [this, &value](const unsigned int &i) {
+            auto m = m_source->magnitudeRaw(i);
+            value += m * m;
+        };
 
-- `src/math/fouriertransform.h`/`.cpp`: `setTfcReferenceFrequency(float hz)`/`tfcReferenceFrequency() const`はそのまま残す(Phase 1で確立済みの、より汎用的なAPI。上位層からは常に`1000.f`を渡すだけにする)。
+        auto collected = [&value, &frequency, &magnitudeDb](const float &bandStart, const float &bandEnd,
+        const unsigned int &count) {
+            auto db = 10.0 * std::log10(value / count);
+            frequency.append((bandStart + bandEnd) / 2.0);
+            // magnitudeRaw==0(無音/未接続)の帯域は-Infinityになる。QJsonValueは非有限doubleを
+            // 自動的にnullへ変換するので、JS側でnullを「データなし」として扱う前提でそのまま渡す。
+            magnitudeDb.append(std::isfinite(db) ? QJsonValue(db) : QJsonValue());
+            value = 0.f;
+        };
 
-### 変更するもの
+        iterate(pointsPerOctave, accumulate, collected);
+    }
+    m_source->unlock();
 
-#### `src/meta/metameasurement.h`/`.cpp`
+    if (!hasData) {
+        return QString();
+    }
 
-- `tfcReferenceFrequency()`/`setTfcReferenceFrequency(float)`のpublic宣言、`virtual void tfcReferenceFrequencyChanged(float) = 0;`、`std::atomic<float> m_tfcReferenceFrequency;`メンバを削除。
-- コンストラクタ初期化リストの`m_tfcReferenceFrequency(1000.f)`部分を削除(`m_tfcReferenceTime(10.f)`は残す)。
-- `tfcReferenceFrequency()`/`setTfcReferenceFrequency()`の実装(108-131行目付近、`tfcReferenceTime()`と対になっている片方)を削除。
+    QJsonObject payload;
+    payload["sourceName"] = m_source->name();
+    payload["color"] = m_source->color().name();
+    payload["frequency"] = frequency;
+    payload["magnitudeDb"] = magnitudeDb;
 
-#### `src/source/measurement.h`/`.cpp`
+    return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+}
+```
 
-- `Q_PROPERTY(float tfcReferenceFrequency READ tfcReferenceFrequency WRITE setTfcReferenceFrequency NOTIFY tfcReferenceFrequencyChanged)`を削除。
-- `void tfcReferenceFrequencyChanged(float) override;`(signals節)を削除。
-- `m_currentTfcReferenceFrequency`メンバを削除。
-- `updateFftPower()`の`tfcParamsChanged`判定から`tfcReferenceFrequency`比較を外し、`tfcReferenceTime`のみで判定するようにする。`case Mode::TFC:`内の`m_dataFT.setTfcReferenceFrequency(m_currentTfcReferenceFrequency);`を`m_dataFT.setTfcReferenceFrequency(1000.f);`(固定値。マジックナンバーを避けたい場合は`static constexpr float TFC_REFERENCE_FREQUENCY_HZ = 1000.f;`のような定数を導入してもよい)に変更する。
-- `toJSON()`の`data["tfc.referenceFrequency"] = tfcReferenceFrequency();`を削除。`fromJSON()`の対応する`setTfcReferenceFrequency(...)`呼び出しも削除(**過去に保存されたプロジェクトファイルに`tfc.referenceFrequency`キーが残っていても、単に無視されるだけで問題ないことを確認**)。
-- `clone()`の`cloned->setTfcReferenceFrequency(tfcReferenceFrequency());`を削除。
-- `store()`内の`modeNote`(706-720行目付近)の`case TFC:`が`QString("FT TFC window %1ms @ %2Hz").arg(tfcReferenceTime()).arg(tfcReferenceFrequency())`のように`tfcReferenceFrequency()`を参照している場合、`%2Hz`部分を固定文字列`"1kHz"`に変更するか、`%1ms`のみの表記に簡略化する。
+`#include <QJsonValue>`は`<QJsonArray>`経由で既に利用可能(明示追加は不要だが、気になる場合は追加してよい)。`<cmath>`の`std::isfinite`は既存の`#include <cmath>`で足りる。
 
-#### `src/remote/items/measurementitem.h`
+## 修正2(軽微): JS側で無音(null)を0として描画してしまう
 
-- `Q_PROPERTY(float tfcReferenceFrequency ...)`と`void tfcReferenceFrequencyChanged(float) override;`を削除。
+**問題**: `web/src/main.ts`の`drawMagnitude()`は`payload.magnitudeDb`(number配列)を前提に`Math.min(...)`/`Math.max(...)`やY座標計算をしているが、修正1で`null`が混ざりうることが明確になった。JS上で`null`は数値コンテキストで`0`に暗黙変換されるため、無音区間があると波形が0dB付近へ不自然にスパイクする。
 
-#### `qml/source/MeasurementProperties.qml`
+**修正方法**: `MagnitudePayload`の型を`magnitudeDb: (number | null)[]`に変更し、`drawMagnitude()`で以下のように対応する。
 
-- `tfcReferenceFrequencySpinBox`ブロック全体を削除する。
-- `tfcReferenceTimeSpinBox`には修正1の`indicators: false`を追加する。
+```typescript
+interface MagnitudePayload {
+  sourceName: string
+  color: string
+  frequency: number[]
+  magnitudeDb: (number | null)[]
+}
+```
+
+```typescript
+function drawMagnitude(payload: MagnitudePayload) {
+  const ctx = canvas.getContext('2d')!
+  const cw = canvas.width / devicePixelRatio
+  const ch = canvas.height / devicePixelRatio
+  ctx.save()
+  ctx.scale(devicePixelRatio, devicePixelRatio)
+
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(0, 0, cw, ch)
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.157)'
+  ctx.lineWidth = 1
+  for (const f of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
+    const x = xForFreq(f, cw)
+    ctx.beginPath()
+    ctx.moveTo(x, 0)
+    ctx.lineTo(x, ch)
+    ctx.stroke()
+  }
+
+  const finiteDb = payload.magnitudeDb.filter((v): v is number => v !== null && Number.isFinite(v))
+  if (!finiteDb.length) {
+    ctx.restore()
+    return
+  }
+
+  const magMin = Math.min(...finiteDb)
+  const magMax = Math.max(...finiteDb)
+  const pad = (magMax - magMin) * 0.1 || 1
+  const yMin = magMin - pad
+  const yMax = magMax + pad
+  const yForDb = (db: number) => ch - (db - yMin) / (yMax - yMin) * ch
+
+  ctx.strokeStyle = payload.color || '#3F51B5'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  let penDown = false
+  payload.frequency.forEach((f, idx) => {
+    const db = payload.magnitudeDb[idx]
+    if (db === null || !Number.isFinite(db)) {
+      penDown = false // 無音区間はギャップにする(0へスパイクさせない)
+      return
+    }
+    const x = xForFreq(f, cw)
+    const y = yForDb(db)
+    if (!penDown) {
+      ctx.moveTo(x, y)
+      penDown = true
+    } else {
+      ctx.lineTo(x, y)
+    }
+  })
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(255,255,255,255)'
+  ctx.font = '11px sans-serif'
+  ctx.fillText(`${payload.sourceName}  ${yMax.toFixed(1)} .. ${yMin.toFixed(1)} dB`, 8, 14)
+
+  ctx.restore()
+}
+```
+
+他の箇所(`connectWebChannel`等)は変更不要。
 
 ## 検証方法
 
-1. CLAUDE.mdの手順(アプリ終了→ビルド→起動→ユーザー確認)でビルド・起動する。
-2. Transform modeを`TFC`に切り替え、reference timeのスピンボックスのみが表示され、インジケータの重なりが解消されていることを確認する(ユーザー提供のスクリーンショットの不具合が再現しないこと)。
-3. reference timeの値を変えると、Magnitude/Phase/Coherenceチャートの見た目が変化することを確認する(Phase 2で実装した「モード不変でもreference time変更を検知してprepareLog()を再実行する」経路がreference frequency抜きでも正しく動くこと)。
-4. プロジェクトファイルを保存→読み込みし直し、reference timeの値が保持されることを確認する(`tfc.referenceFrequency`キーが無くなっても壊れないこと)。
-5. `tfc.referenceFrequency`キーを含む(修正前に保存された)古いプロジェクトファイルがあれば、それを読み込んでもクラッシュ・エラーが出ないことを確認する(未知キーは単に無視される想定)。
-6. ビルドが警告なく通ること(未使用になった`tfcReferenceFrequency`関連の参照が他に残っていないか、`grep -rn tfcReferenceFrequency src/ qml/`で確認する)。
+1. CLAUDE.mdの手順(終了→ビルド→起動)でビルドする。
+2. `cd web && npm run dev`を起動しておき、`OSM_JS_FRONTEND=1 OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`で実機確認する(通常の`open`では環境変数が渡らない点に注意)。
+3. 実オーディオ入力を数分間接続したまま動かし、クラッシュ・フリーズが起きないことを確認する(修正1がロック漏れの解消になっているかの実質的な確認。データ競合はタイミング依存で毎回再現するとは限らないため、長めに動かす)。
+4. 入力デバイスを未接続/ミュートにするなどしてMagnitudeが無音に近い状態を作り、波形が0dB付近へスパイクせず、該当区間が途切れる(またはグラフに描画されない)ことを確認する。
+5. 通常の音声入力に戻し、Phase 1で確認済みの描画(ダークモード配色・曲線描画)が引き続き問題ないことを確認する。
+6. `npm run build`(`tsc`の型チェック含む)が通ることを確認する。
 
 ## 完了後の作業
 
-- [dev-docs/customizations.md](dev-docs/customizations.md)に、reference frequencyを1000Hz固定にした理由(SysTuneの調査メモに基づく判断)を追記する。
-- [dev-docs/tfc-window-implementation-plan.md](dev-docs/tfc-window-implementation-plan.md) 3.2節・3.6節の「reference frequency」に関する記述を、固定値である旨に更新する。
-- [dev-docs/tfc-window-phases.md](dev-docs/tfc-window-phases.md) Phase 2・Phase 4のタスク一覧・完了条件の記述からreference frequencyのUI/プロパティに関する言及を削除・修正する(既に「完了」表記のPhase自体の状態は変更不要)。
-- [dev-docs/measurement-types.md](dev-docs/measurement-types.md)のTransform modeの説明(34行目)を、「基準周波数は1000Hz固定、ユーザーはreference time(基準窓時間)のみ調整する」という実態に合わせて更新する。
+- [dev-docs/js-frontend-phases.md](js-frontend-phases.md) Phase 1の完了メモに、レビューで見つかった上記2件の修正を追記する。
+- [dev-docs/customizations.md](customizations.md)のPhase 1エントリに、この修正の内容を追記するか、同エントリを更新する。

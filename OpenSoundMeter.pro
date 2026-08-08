@@ -1,6 +1,6 @@
 TEMPLATE = app
 
-QT += qml quick quickcontrols2 core
+QT += qml quick quickcontrols2 core webenginewidgets webchannel
 CONFIG += c++1z
 CONFIG += sdk_no_version_check
 CONFIG += qmltypes
@@ -23,6 +23,8 @@ SOURCES += src/main.cpp \
     src/chart/frequencybasedplot.cpp \
     src/chart/globalsmoothing.cpp \
     src/chart/frequencybasedserieshelper.cpp \
+    src/chart/seriessampler.cpp \
+    src/chart/databridge.cpp \
     src/chart/groupdelayplot.cpp \
     src/chart/levelobject.cpp \
     src/chart/levelplot.cpp \
@@ -132,6 +134,10 @@ RESOURCES += qml.qrc \
     images.qrc \
     shaders/shaders.qrc
 
+exists(web/dist/index.html) {
+    RESOURCES += web/web.qrc
+}
+
 # Additional import path used to resolve QML modules in Qt Creator's code model
 QML_IMPORT_PATH = qml
 
@@ -179,6 +185,8 @@ HEADERS += \
     src/chart/frequencybasedplot.h \
     src/chart/globalsmoothing.h \
     src/chart/frequencybasedserieshelper.h \
+    src/chart/seriessampler.h \
+    src/chart/databridge.h \
     src/chart/groupdelayplot.h \
     src/chart/levelobject.h \
     src/chart/levelplot.h \

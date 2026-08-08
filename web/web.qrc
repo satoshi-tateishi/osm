@@ -1,0 +1,17 @@
+<!--
+リリースビルド時に web/dist/ (npm run build の出力) を qrc:/ に同梱するためのテンプレート。
+vite.config.ts で entryFileNames/chunkFileNames/assetFileNames をハッシュなし固定名にしているため、
+`npm run build` を実行すれば常にこのファイル一覧のまま更新できる。
+
+Phase 1で OpenSoundMeter.pro の RESOURCES に条件付きで追加した。
+web/dist/index.html が存在する場合だけこのqrcを含めるため、通常の qmake && make フローは
+npm run build 未実行でも壊れない。
+-->
+<RCC>
+  <qresource prefix="/web">
+    <file alias="index.html">dist/index.html</file>
+    <file alias="favicon.svg">dist/favicon.svg</file>
+    <file alias="assets/index.js">dist/assets/index.js</file>
+    <file alias="assets/index.css">dist/assets/index.css</file>
+  </qresource>
+</RCC>
