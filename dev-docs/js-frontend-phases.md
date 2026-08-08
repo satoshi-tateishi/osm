@@ -116,6 +116,9 @@ Phase 2(Phase・Coherence追加)まで完了。
 - 新規2サンプラーも`frequencyDomainSize()`確認から`iterate()`完了までを`m_source->lock()`/`unlock()`で保護し、Measurementワーカースレッドとのデータ競合を避ける。
 - `DataBridge`から`magnitudeUpdated`/`phaseUpdated`/`coherenceUpdated`を同じ`readyRead()`契機で送信し、JS側は共通の`drawSeries()`で3枚のCanvasを縦積み描画する。
 - `npm run build`によるTypeScript型チェック/Viteビルドと、Qt 5.15.2のシャドウビルド(qmake/make)が成功した。
+- Phase 2レビューで、リファレンス未接続/無信号時にもPhaseの生値が有限の0度となり、119点すべてが有効値として描画される問題を確認した。`PhaseSeriesSampler`でPhaseと並行して同じ帯域のMagnitudeパワーを集計し、MagnitudeのdB値が非有限ならPhaseも`null`にする防御的な妥当性チェックを追加した。
+- 根本原因は`Measurement::averaging()`のPhase計算にMagnitude側と同等のNaN/Infガードがないことに起因する可能性が高い。ただし既存DSP計算の変更と広範な回帰確認はJSフロントエンド化の範囲を超えるため、DSP本体は変更せずサンプラー層で対処した。
+- 修正後のqrc同梱版を無信号状態で起動し、Chrome DevTools Protocol経由でCanvas画素を検査した。Phase Canvasのソース色画素は0件で、グリッドだけが残り、0度への偽の直線が描画されないことを確認した。
 
 ---
 

@@ -93,23 +93,33 @@ QString PhaseSeriesSampler::sampleJson(unsigned int pointsPerOctave)
 
     QJsonArray frequency, phaseDeg;
     Complex value(0);
+    float magnitudePower = 0.f;
     bool hasData = false;
 
     m_source->lock();
     if (m_source->frequencyDomainSize()) {
         hasData = true;
 
-        auto accumulate = [this, &value](const unsigned int &i) {
+        auto accumulate = [this, &value, &magnitudePower](const unsigned int &i) {
             value += m_source->phase(i);
+            auto m = m_source->magnitudeRaw(i);
+            magnitudePower += m * m;
         };
 
-        auto collected = [&value, &frequency, &phaseDeg](const float &bandStart, const float &bandEnd,
-                                                          const unsigned int &count) {
+        auto collected = [&value, &magnitudePower, &frequency, &phaseDeg](const float &bandStart, const float &bandEnd,
+                                                                          const unsigned int &count) {
             auto avg = value / static_cast<float>(count);
             auto degrees = std::atan2(avg.imag, avg.real) * 180.0 / M_PI;
+            // 同じ帯域のMagnitudeが無効(無音/未接続でNaN・Infになる)場合、Phase自体の
+            // 生値がたまたま有限(0度)に見えても意味のあるデータではないため、あわせてnullにする。
+            auto magnitudeDb = 10.0 * std::log10(magnitudePower / count);
+            bool valid = std::isfinite(degrees) && std::isfinite(magnitudeDb);
+
             frequency.append((bandStart + bandEnd) / 2.0);
-            phaseDeg.append(std::isfinite(degrees) ? QJsonValue(degrees) : QJsonValue());
+            phaseDeg.append(valid ? QJsonValue(degrees) : QJsonValue());
+
             value = Complex(0);
+            magnitudePower = 0.f;
         };
 
         iterate(pointsPerOctave, accumulate, collected);

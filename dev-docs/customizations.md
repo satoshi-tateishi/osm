@@ -358,3 +358,5 @@
 - `web/src/main.ts`: Magnitude/Phase/CoherenceのCanvasを縦積みにし、対数周波数グリッドと系列線を共通の`drawSeries()`で描画する。Phaseは-180〜180度固定で、隣接値の差が180度を超える箇所のパスを分断する。Coherenceは0〜1固定レンジで描画する。
 - `web/src/style.css`: 単一Canvas用の`#chart`を3面共通の`.chart`へ変更し、各チャートの見出しスタイルを追加した。
 - 本Phaseの意図的な簡略化として、Phaseのスプライン後アンラップはパス分断で代替し、`PhasePlot::rotate`は0度固定、Coherenceは`Type::Normal`固定とした。Magnitude/Phase線のcoherence連動透明度も見送った。
+- **レビュー修正: 無信号時の偽0度を描画しない**: リファレンス未接続/無信号時、Phaseの生値が有限の0度となって`std::isfinite(degrees)`だけでは無効と判定できないケースがあった。`PhaseSeriesSampler`で同じ帯域のMagnitudeパワーも並行集計し、そのdB値が非有限ならPhaseをJSONの`null`へ変換する。根本原因は`Measurement::averaging()`のPhase計算にMagnitude側と同等のNaN/Infガードがないことに起因する可能性が高いが、DSP本体の変更は今回のJSフロントエンド化のスコープ外とした。
+- 修正後のqrc同梱版を無信号状態で実機確認し、Chrome DevTools ProtocolからPhase Canvasのソース色画素が0件(グリッドのみ)であることを確認した。
