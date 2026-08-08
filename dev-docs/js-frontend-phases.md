@@ -145,6 +145,7 @@ Phase 3(RTA/Spectrum追加)まで完了。
 - `DataBridge`に`rtaUpdated(QString)`を追加し、Magnitude/Phase/Coherenceと同じ`readyRead()`契機でJSONをpushする。JS側は`levelDb`の有限値から表示レンジを求め、既存の対数周波数軸と共通`drawSeries()`で4枚目のCanvasへ描画する。
 - 既存OpenGL版とのコード経路比較により、サンプリング元、バンド集計、dB変換、中心周波数の算出が一致することを確認した。意図的な差はスプライン適用前のバンド中心値を直接結ぶ点と、上記の固定スコープのみ。
 - `npm run build`によるTypeScript型チェック/Viteビルドと、Qt 5.15.2のシャドウビルド(qmake/make)が成功した。qrc同梱版を起動してChrome DevTools ProtocolからRTA Canvasを検査し、ソース色の曲線が描かれ、3秒間隔で画素チェックサムが変化することを確認した。環境変数なしの通常版も起動後10秒間クラッシュしないことを確認した。
+- **レビュー修正: データなし時も空のチャートを描画する**: Magnitude/RTAは有限値から動的レンジを求めており、全点`null`のときは`drawSeries()`を呼ばず、背景・グリッド・ラベルまで未描画になっていた。データなし時は表示レンジ`-1..1`へフォールバックして常に`drawSeries()`を呼ぶようにし、線だけを描かない空チャートとしてPhase/Coherenceと見た目を統一した。有限値がある場合の動的レンジと曲線描画は従来どおり。
 
 ---
 

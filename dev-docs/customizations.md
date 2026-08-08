@@ -371,3 +371,4 @@
 - `web/src/main.ts`: `levelDb`を受け取るRTA Canvasを追加し、有限値から動的レンジを算出して共通の対数周波数軸・系列描画処理で表示する。
 - Phase 3ではRTAPlotの既定状態に合わせ、`Mode::Line`・`Scale::DBfs`・ピーク表示なしに固定した。`Scale::SPL`/`Phon`、Bars/Lines、ピーク表示とそれらのUIコントロールは対象外。
 - TypeScript/ViteとQt本体のビルド後、qrc同梱版を実機起動してChrome DevTools ProtocolからRTA Canvasを検査した。ソース色の曲線が描画され、3秒後に画素数とチェックサムが変化したため、実オーディオデータによるリアルタイム更新まで確認できた。
+- **レビュー修正: Magnitude/RTAのデータなし表示を統一**: 全点が`null`の場合に`finiteRange()`から早期returnしていたため、両Canvasだけ背景・グリッド・ラベルも描かれない問題があった。表示レンジ`-1..1`へフォールバックして共通`drawSeries()`を必ず呼ぶようにし、Phase/Coherenceと同じ「グリッドとラベルは表示し、無効な系列線だけを描かない」状態へ統一した。実データがある場合の動的レンジは変更していない。

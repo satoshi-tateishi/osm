@@ -134,8 +134,7 @@ function finiteRange(values: (number | null)[], padRatio = 0.1, fallbackPad = 1)
 }
 
 function drawMagnitude(payload: MagnitudePayload) {
-  const range = finiteRange(payload.magnitudeDb)
-  if (!range) return
+  const range = finiteRange(payload.magnitudeDb) ?? { min: -1, max: 1 }
   drawSeries(canvases.magnitude, payload.frequency, payload.magnitudeDb, payload.color, range.min, range.max,
     `${payload.sourceName} dB`)
 }
@@ -147,8 +146,7 @@ function drawPhase(payload: PhasePayload) {
 }
 
 function drawRTA(payload: RTAPayload) {
-  const range = finiteRange(payload.levelDb)
-  if (!range) return
+  const range = finiteRange(payload.levelDb) ?? { min: -1, max: 1 }
   drawSeries(canvases.rta, payload.frequency, payload.levelDb, payload.color, range.min, range.max,
     `${payload.sourceName} dB`)
 }
