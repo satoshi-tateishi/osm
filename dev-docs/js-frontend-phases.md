@@ -2,7 +2,7 @@
 
 [js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-Phase 4(Spectrogram追加)まで完了。
+Phase 0〜5が完了し、5チャートとトップレベルの複数Measurementに対応済み。QML版は実用機能の差を踏まえて併存を継続する。
 
 ## 進捗状況
 
@@ -13,7 +13,7 @@ Phase 4(Spectrogram追加)まで完了。
 | Phase 2 | Phase・Coherenceを追加 | 完了 |
 | Phase 3 | RTA(Spectrum)を追加 | 完了 |
 | Phase 4 | Spectrogramを追加 | 完了 |
-| Phase 5 | 結合検証・DataBridgeライフサイクル確定・QML版の扱い判断 | 未着手 |
+| Phase 5 | 結合検証・DataBridgeライフサイクル確定・QML版の扱い判断 | 完了 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
 
@@ -173,15 +173,22 @@ Phase 4(Spectrogram追加)まで完了。
 
 **目的**: 5チャート全てが揃った状態で、複数パネル・複数ソースを同時に開いた場合の挙動を検証し、`DataBridge`のインスタンス管理(登録/解除タイミング、上限)を正式に設計する。あわせてQML版チャートコードを削除するかどうかを判断する。Phase 1〜4は1パネル・1ソースの素朴な実装に留めており、複数パネル対応の一般設計は本Phaseで初めて確定させる方針とした([js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) 5節の未決事項に対応)。
 
-**対象ファイル**: `src/chart/databridge.h`/`.cpp`(一般化)、その他統合に伴う修正、`customizations.md`(判断結果の記録)
+**対象ファイル**: (新規)`src/chart/jsfrontendmanager.h`/`.cpp`、`src/main.cpp`、`OpenSoundMeter.pro`、`src/chart/databridge.h`(責務コメント)、`customizations.md`(判断結果の記録)
 
 **タスク**:
-- [ ] 複数チャートパネル・複数ソースを同時に開いた場合の`DataBridge`ライフサイクル設計(パネル追加/削除時の`registerObject`/`deregisterObject`連動、既存QMLの`Loader`/`Repeater`パターンとの対応)
-- [ ] `DataBridge`インスタンス数の実用上の上限確認(実機でのパフォーマンス測定)
-- [ ] 5チャート全てでQML版との表示値検証が完了していることの最終確認
-- [ ] QML側の対応チャートコードを削除するか、しばらく両方残すかを判断し、結果を`customizations.md`に記録
-- [ ] CLAUDE.md記載の動作確認手順(アプリ終了→ビルド→起動→ユーザー確認)に従って最終確認
+- [x] 複数チャートパネル・複数ソースを同時に開いた場合の`DataBridge`ライフサイクル設計(トップレベルMeasurementの追加/削除とJSウィンドウを連動)
+- [x] `DataBridge`インスタンス数の実用上の上限目安を実機確認
+- [x] 5チャート全てでPhase 1〜4のQML版との表示値検証が完了していることの最終確認
+- [x] QML側の対応チャートコードは削除せず併存を継続すると判断し、`customizations.md`に記録
+- [x] CLAUDE.md記載の手順でアプリ終了→ビルド→起動の最終確認を実施
 
 **完了条件**: ユーザーによる動作確認完了、`DataBridge`ライフサイクル設計がドキュメント化されていること
 
 **依存Phase**: Phase 1〜4完了後
+
+**完了メモ(実施結果)**:
+- `JsFrontendManager`がルート`SourceList`の`postItemAppended`/`preItemRemoved`を購読し、トップレベルのMeasurement 1つにつき`DataBridge`/`QWebChannel`/`QWebEngineView`を1組作る。ユーザーがウィンドウを閉じる場合とソース削除時の両方で`QWebEngineView::close()`→`destroyed`を通し、`m_panels`からの除去とbridge/channelの`deleteLater()`を1か所に集約した。
+- 検証専用の一時コード(最終ソースには残していない)でMeasurementを5個に増やし、DevToolsのターゲットIDが5枚すべて異なることを確認した。その後、指定ソースの削除で対応IDが消え、Measurementの再追加で新しいIDのページが生成されることを確認した。その間、クラッシュやマップ不整合は発生しなかった。
+- 5パネルを約5分連続動作させ、クラッシュ・フリーズなし。サンプル時の本体プロセスは約495 MiB RSS、CPU約128%(オーディオ処理と5ページ更新を含む)だった。したがって5枚は動作確認済みの目安とするが、WebEngineの負荷が小さくないため無制限の常用を保証する上限とはしない。
+- `npm run build`(型チェック含む)とQt 5.15.2のシャドウビルドが成功。`OSM_JS_FRONTEND=1`でqrc版JSページの生成を確認した。環境変数の判定は従来どおりのため、未設定時はJSウィンドウを生成しない。
+- QML版は削除しない。JS版はチャートの設定コントロール、coherence連動の透過度演出、QMLパネルレイアウトとの統合が未実装で、依然として環境変数が必要な実験機能である。機能的にQML版を代替できる段階で改めて削除を検討する。

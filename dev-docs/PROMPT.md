@@ -1,245 +1,258 @@
-# 実装プロンプト: フロントエンドJS化 Phase 4(Spectrogramを追加)
+# 実装プロンプト: フロントエンドJS化 Phase 5(結合検証・DataBridgeライフサイクル確定・QML版の扱い判断)
 
-このファイルは[js-frontend-phases.md](js-frontend-phases.md) Phase 4を実装するための指示書。Phase 1〜3(Magnitude/Phase/Coherence/RTA)は完了・レビュー済み。Phase 4はSpectrogramチャートを追加する。[js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) 3.2節・3.3節の通り、51行の履歴バッファ/スクロール描画という他4チャートと異なる設計が必要なため最後に着手する。
+このファイルは[js-frontend-phases.md](js-frontend-phases.md) Phase 5を実装するための指示書。Phase 1〜4(Magnitude/Phase/Coherence/RTA/Spectrogram)は完了・レビュー済み。5チャート全ての実装が揃ったので、Phase 5では**複数チャートパネル・複数ソースを同時に開いた場合のDataBridgeライフサイクル**を正式に設計し、QML版の扱いを判断する。
 
-## 前提・スコープの確認
+## 前提・現状の課題
 
-`src/chart/opengl/spectrogramseriesrenderer.cpp`・`src/chart/spectrogramplot.h`を調査した結果:
+現在の`src/main.cpp`は、`OSM_JS_FRONTEND`環境変数が設定されているとき、**起動時に見つかった最初のMeasurementソース1つだけ**を対象に、`DataBridge`・`QWebChannel`・`QWebEngineView`を1組だけ生成する(129〜148行目相当)。これはPhase 1の「最小の垂直スライス」方針としては正しかったが、以下が未対応:
 
-- Spectrogramも**`module(i)`(単一チャンネル)を使う**ため、RTAと同様**リファレンスチャンネル不要**。この検証環境ではリファレンス無信号でMagnitude/Phase/Coherenceがnullになる状態でも、RTAと同じく実データで確認できるはず。
-- 値の算出は`10 * log10f(value)`(RTAと同じくcountで割らない、バンド内エネルギー合計)。DC成分(`i==0`)を除外する点もRTAと同じ。
-- **無音時の扱いがMagnitude/RTAと異なる**: 非有限値やフロア(`-140dB`)未満は`std::isnormal`チェックで**フロア値(-140dB)にクランプ**する(`spectrogramseriesrenderer.cpp` 113〜115行目)。ヒートマップは全セルに色が必要なため、Magnitude/Phase/RTAのように`null`にする設計とは意図的に異なる。**Phase 4でもクランプ方式を踏襲し、nullは使わない。**
-- 色は`lower`(既定-70dB)〜`upper`(既定-10dB)の閾値で**青→緑→黄→赤**の4段階グラデーション(`lower`未満は非表示、`upper`以上は赤固定)。既定値は`src/chart/spectrogramplot.cpp`の`DEFAULT_DB_LOWER = -70`・`DEFAULT_DB_UPPER = -10`で、Phase 4では固定値として扱う(「コントロールなし」の方針)。
-- 履歴は最大51行の`std::deque`。**描画方式そのものをQML版から変える**([js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) 2.3節の通り、QML版は毎フレーム全メッシュ再構築だが、JS版は`putImageData`/`drawImage`によるオフスクリーンImageDataの1行スクロール+1行追記にする、既にjs-frontend-phases.md Phase 4に記載の通り)。**C++側は51行分の履歴を保持しない**(既存の`history`相当のバッファはJS側だけが持つ)。DataBridgeは新規1行分のデータだけをpushする。
+- 複数のMeasurementソースがある場合、2つ目以降は無視される。
+- 実行中にMeasurementソースを追加/削除しても反映されない(起動時の状態に固定)。
+- JSウィンドウをユーザーが閉じても、`DataBridge`は`readyRead()`に接続されたまま裏で動き続ける(無駄な計算)。
 
-## 実装1: `src/chart/seriessampler.h` / `.cpp`に`SpectrogramSeriesSampler`を追加
+[js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) 5節の未決事項として残されていた「複数パネル・複数ソース時のDataBridgeインスタンス管理」「QWebChannelの登録/解除タイミング(パネルを閉じたときのクリーンアップ)」をここで確定させる。
 
-`src/chart/seriessampler.h`の`RTASeriesSampler`の直後に追加:
+**スコープ**: `sourceList`直下(トップレベル)のMeasurementソースのみを対象とする。Group内にネストしたMeasurementへの対応は今回のスコープ外とする(既存のPhase 1〜4のハードコードされたロジックも同様にトップレベルのみを見ていたため、後退ではない)。
+
+## 実装1(新規): `src/chart/jsfrontendmanager.h` / `.cpp`
+
+`SourceList`の`postItemAppended`/`preItemRemoved`シグナルを購読し、Measurementソース1つにつきJSウィンドウ(`DataBridge`+`QWebChannel`+`QWebEngineView`)を1つ動的に開閉する。**実際のクリーンアップはウィンドウの`destroyed`シグナル1箇所に一本化し**(ユーザーがウィンドウを閉じた場合とソース削除で自動的に閉じた場合の両方でここを通る)、`closePanel()`は`QWebEngineView::close()`(`Qt::WA_DeleteOnClose`により非同期に破棄される)を呼ぶだけにすることで、二重解放を避ける。
 
 ```cpp
-class SpectrogramSeriesSampler : private FrequencyBasedSeriesHelper
+// src/chart/jsfrontendmanager.h
+#ifndef CHART_JSFRONTENDMANAGER_H
+#define CHART_JSFRONTENDMANAGER_H
+
+#include <QObject>
+#include <QMap>
+#include <QUuid>
+
+#include "shared/source_shared.h"
+
+class SourceList;
+class QWebEngineView;
+
+namespace Chart {
+
+// Phase 5: OSM_JS_FRONTEND有効時、sourceList直下のMeasurementソース1つにつき
+// JSフロントエンドのウィンドウを1つ動的に開閉する。ソースの追加/削除、ユーザーによる
+// ウィンドウの手動クローズのどちらの経路でも、後片付けはウィンドウのdestroyedシグナル
+// 1箇所に一本化してある(二重解放を避けるため)。
+class JsFrontendManager : public QObject
 {
+    Q_OBJECT
 public:
-    explicit SpectrogramSeriesSampler();
+    explicit JsFrontendManager(SourceList *sourceList, bool useDevServer, QObject *parent = nullptr);
+    ~JsFrontendManager() override;
 
-    void setSource(const Shared::Source &source);
-
-    // 戻り値: {"sourceName","frequency":[...],"levelDb":[...]} の1行分のJSON文字列。
-    // 無音/未接続の帯域はnullにせず-140dB(フロア)へクランプする(ヒートマップは全セルに色が必要なため)。
-    QString sampleJson(unsigned int pointsPerOctave = 12);
-
-protected:
-    const Shared::Source &source() const override;
+private slots:
+    void onItemAppended(const Shared::Source &item);
+    void onItemRemoved(QUuid uuid);
 
 private:
-    Shared::Source m_source;
+    void openPanel(const Shared::Source &source);
+    void closePanel(const QUuid &uuid);
+
+    SourceList *m_sourceList;
+    bool m_useDevServer;
+    QMap<QUuid, QWebEngineView *> m_panels;
 };
+
+} // namespace Chart
+
+#endif // CHART_JSFRONTENDMANAGER_H
 ```
 
-`src/chart/seriessampler.cpp`の末尾(`RTASeriesSampler`の実装の後、`} // namespace Chart`の前)に追加:
-
 ```cpp
-SpectrogramSeriesSampler::SpectrogramSeriesSampler() : FrequencyBasedSeriesHelper()
+// src/chart/jsfrontendmanager.cpp
+#include "jsfrontendmanager.h"
+
+#include <QWebChannel>
+#include <QWebEngineView>
+
+#include "databridge.h"
+#include "src/sourcelist.h"
+#include "src/source/measurement.h"
+
+namespace Chart {
+
+JsFrontendManager::JsFrontendManager(SourceList *sourceList, bool useDevServer, QObject *parent)
+    : QObject(parent), m_sourceList(sourceList), m_useDevServer(useDevServer)
 {
+    connect(m_sourceList, &SourceList::postItemAppended, this, &JsFrontendManager::onItemAppended);
+    connect(m_sourceList, &SourceList::preItemRemoved, this, &JsFrontendManager::onItemRemoved);
+
+    for (const auto &item : m_sourceList->items()) {
+        if (dynamic_cast<Measurement *>(item.get())) {
+            openPanel(item);
+        }
+    }
 }
 
-void SpectrogramSeriesSampler::setSource(const Shared::Source &source)
+JsFrontendManager::~JsFrontendManager()
 {
-    m_source = source;
+    // アプリ終了時の後片付け。close()はWA_DeleteOnCloseで非同期削除をスケジュールする
+    // だけなので、イベントループが止まる終了シーケンス中は完了しないこともあるが、
+    // プロセス終了時にOSが回収するため実害はない。
+    const auto views = m_panels.values();
+    for (auto *view : views) {
+        view->close();
+    }
 }
 
-const Shared::Source &SpectrogramSeriesSampler::source() const
+void JsFrontendManager::onItemAppended(const Shared::Source &item)
 {
-    return m_source;
+    if (dynamic_cast<Measurement *>(item.get())) {
+        openPanel(item);
+    }
 }
 
-QString SpectrogramSeriesSampler::sampleJson(unsigned int pointsPerOctave)
+void JsFrontendManager::onItemRemoved(QUuid uuid)
 {
-    if (!m_source || !m_source->active()) {
-        return QString();
+    closePanel(uuid);
+}
+
+void JsFrontendManager::openPanel(const Shared::Source &source)
+{
+    auto uuid = source->uuid();
+    if (m_panels.contains(uuid)) {
+        return;
     }
 
-    constexpr float floor = -140.f;
-    QJsonArray frequency, levelDb;
-    float value = 0.f;
-    bool hasData = false;
+    auto *bridge = new DataBridge();
+    bridge->setSource(source);
 
-    m_source->lock();
-    if (m_source->frequencyDomainSize()) {
-        hasData = true;
+    auto *channel = new QWebChannel();
+    channel->registerObject(QStringLiteral("dataBridge"), bridge);
 
-        auto accumulate = [this, &value](const unsigned int &i) {
-            if (i == 0) {
-                return; // DC成分を除外(spectrogramseriesrenderer.cppと同じ)
+    auto *view = new QWebEngineView();
+    view->page()->setWebChannel(channel);
+    view->resize(900, 600);
+    view->setWindowTitle(QStringLiteral("OSM JS Frontend — %1").arg(source->name()));
+    view->load(m_useDevServer
+               ? QUrl(QStringLiteral("http://localhost:5173/"))
+               : QUrl(QStringLiteral("qrc:/web/index.html")));
+    view->setAttribute(Qt::WA_DeleteOnClose);
+
+    // ウィンドウが閉じられたとき(ユーザー操作・ソース削除どちらの経路でも)、
+    // ここで一元的にDataBridge/QWebChannelを後片付けする。
+    connect(view, &QObject::destroyed, this, [this, uuid, bridge, channel]() {
+        m_panels.remove(uuid);
+        bridge->deleteLater();
+        channel->deleteLater();
+    });
+
+    view->show();
+    m_panels.insert(uuid, view);
+}
+
+void JsFrontendManager::closePanel(const QUuid &uuid)
+{
+    auto it = m_panels.find(uuid);
+    if (it == m_panels.end()) {
+        return;
+    }
+    (*it)->close(); // 実際のm_panelsからの除去・DataBridge/QWebChannel破棄はdestroyedシグナル側で行う
+}
+
+} // namespace Chart
+```
+
+**注意**: ウィンドウのタイトルはパネル生成時の`source->name()`のみを反映する(生成後にソース名を変更しても追従しない)。ライブ追従が必要ならソースの`nameChanged`シグナルへの接続を追加すればよいが、Phase 5では見送る。
+
+## 実装2: `OpenSoundMeter.pro`の変更
+
+`SOURCES +=`ブロックの`src/chart/databridge.cpp \`の直後に追加:
+```
+    src/chart/jsfrontendmanager.cpp \
+```
+
+`HEADERS +=`ブロックの`src/chart/databridge.h \`の直後に追加:
+```
+    src/chart/jsfrontendmanager.h \
+```
+
+## 実装3: `src/main.cpp`の変更
+
+`#include`群を変更。`#include <QWebChannel>`・`#include <QWebEngineView>`・`#include "src/chart/databridge.h"`を削除し、代わりに追加:
+
+```cpp
+#include "src/chart/jsfrontendmanager.h"
+```
+
+既存の以下のブロック(146〜177行目相当)を丸ごと置き換える:
+
+```cpp
+    Chart::DataBridge *jsDataBridge = nullptr;
+    QWebChannel *jsWebChannel = nullptr;
+    QWebEngineView *jsView = nullptr;
+
+    if (qEnvironmentVariableIsSet("OSM_JS_FRONTEND")) {
+        Shared::Source measurementSource;
+        for (const auto &item : sourceList->items()) {
+            if (dynamic_cast<Measurement *>(item.get())) {
+                measurementSource = item;
+                break;
             }
-            auto m = m_source->module(i);
-            value += m * m;
-        };
+        }
 
-        auto collected = [&value, &frequency, &levelDb](const float &bandStart, const float &bandEnd,
-        const unsigned int &) {
-            auto db = 10.0 * std::log10(value);
-            // 無音/未接続でもnullにせずフロアへクランプする(Magnitude/Phase/RTAと異なり、
-            // ヒートマップは全セルに色が必要なため。spectrogramseriesrenderer.cppと同じ方針)。
-            if (!std::isfinite(db) || db < floor) {
-                db = floor;
-            }
-            frequency.append((bandStart + bandEnd) / 2.0);
-            levelDb.append(db);
-            value = 0.f;
-        };
+        jsDataBridge = new Chart::DataBridge(&app);
+        if (measurementSource) {
+            jsDataBridge->setSource(measurementSource);
+        } else {
+            qWarning() << "OSM_JS_FRONTEND: Measurementソースが見つかりません";
+        }
 
-        iterate(pointsPerOctave, accumulate, collected);
-    }
-    m_source->unlock();
+        jsWebChannel = new QWebChannel(&app);
+        jsWebChannel->registerObject(QStringLiteral("dataBridge"), jsDataBridge);
 
-    if (!hasData) {
-        return QString();
-    }
-
-    QJsonObject payload;
-    payload["sourceName"] = m_source->name();
-    payload["frequency"] = frequency;
-    payload["levelDb"] = levelDb;
-
-    return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
-}
-```
-
-## 実装2: `src/chart/databridge.h` / `.cpp`の拡張
-
-`databridge.h`: `RTASeriesSampler m_rtaSampler;`の下に`SpectrogramSeriesSampler m_spectrogramSampler;`を追加、`signals:`に追加:
-
-```cpp
-    void spectrogramRowUpdated(const QString &json);
-```
-
-`databridge.cpp`の`setSource()`に、`m_rtaSampler.setSource(source);`の直後に追加:
-
-```cpp
-    m_spectrogramSampler.setSource(source);
-```
-
-`onReadyRead()`の末尾(`rtaUpdated`のemitの後)に追加:
-
-```cpp
-    auto spectrogramJson = m_spectrogramSampler.sampleJson();
-    if (!spectrogramJson.isEmpty()) {
-        emit spectrogramRowUpdated(spectrogramJson);
+        jsView = new QWebEngineView();
+        jsView->page()->setWebChannel(jsWebChannel);
+        jsView->resize(900, 600);
+        jsView->setWindowTitle(QStringLiteral("OSM JS Frontend (Phase 1)"));
+        jsView->load(qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER")
+                     ? QUrl(QStringLiteral("http://localhost:5173/"))
+                     : QUrl(QStringLiteral("qrc:/web/index.html")));
+        jsView->show();
     }
 ```
 
-`OpenSoundMeter.pro`の変更は不要。
+置き換え後:
 
-## 実装3: `web/src/main.ts`にSpectrogramチャートを追加
-
-型定義を追加(`color`フィールドは無し。値ごとの色分けのため単一のソース色は使わない):
-
-```typescript
-interface SpectrogramPayload {
-  sourceName: string
-  frequency: number[]
-  levelDb: number[]
-}
+```cpp
+    std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
+    if (qEnvironmentVariableIsSet("OSM_JS_FRONTEND")) {
+        jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
+            sourceList.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
+    }
 ```
 
-HTML(`#app`のinnerHTML)に追加(RTAの直後などに配置):
-
-```html
-  <h2>Spectrogram</h2>
-  <canvas id="chart-spectrogram" class="chart"></canvas>
-```
-
-`canvases`に`spectrogram: document.querySelector<HTMLCanvasElement>('#chart-spectrogram')!,`を追加。`resizeAll()`に`resizeCanvas(canvases.spectrogram, 220)`を追加。**注意**: `canvas.width`/`height`を変更するとブラウザの仕様でCanvasの内容は消去される(スクロール履歴が失われる)。Phase 4ではウィンドウリサイズ時に履歴が消えることを許容する(この制約は完了メモに明記すること)。
-
-Spectrogram専用の定数・色マップ・描画関数を追加(既存の`drawSeries`等とは独立した関数にする):
-
-```typescript
-const SPECTROGRAM_ROWS = 51
-const SPEC_LOWER = -70
-const SPEC_UPPER = -10
-const COLOR_BLUE: [number, number, number] = [33, 150, 243]
-const COLOR_GREEN: [number, number, number] = [139, 195, 74]
-const COLOR_YELLOW: [number, number, number] = [255, 235, 59]
-const COLOR_RED: [number, number, number] = [244, 67, 54]
-
-function mixColor(a: [number, number, number], b: [number, number, number], k: number): [number, number, number] {
-  return [0, 1, 2].map((i) => a[i] + k * (b[i] - a[i])) as [number, number, number]
-}
-
-// src/chart/opengl/spectrogramseriesrenderer.cppの配色ロジックを移植。
-// lower未満は背景色(黒)に揃えて見えなくする(元のalpha=0相当。putImageDataでの
-// スクロール時に透明ピクセルだと過去の行が透けて残ってしまうため、透明ではなく
-// 不透明な黒で塗る)。
-function spectrogramColor(db: number): string {
-  if (db <= SPEC_LOWER) return 'rgb(0,0,0)'
-  const seg = (SPEC_UPPER - SPEC_LOWER) / 3
-  let rgb: [number, number, number]
-  if (seg <= 0 || db >= SPEC_UPPER) {
-    rgb = COLOR_RED
-  } else if (db < SPEC_LOWER + seg) {
-    rgb = mixColor(COLOR_BLUE, COLOR_GREEN, (db - SPEC_LOWER) / seg)
-  } else if (db < SPEC_LOWER + 2 * seg) {
-    rgb = mixColor(COLOR_GREEN, COLOR_YELLOW, (db - (SPEC_LOWER + seg)) / seg)
-  } else {
-    rgb = mixColor(COLOR_YELLOW, COLOR_RED, (db - (SPEC_LOWER + 2 * seg)) / seg)
-  }
-  return `rgb(${Math.round(rgb[0])},${Math.round(rgb[1])},${Math.round(rgb[2])})`
-}
-
-// 新しい1行を最上部に追加し、既存の内容を1行分下へスクロールする。
-// devicePixelRatioのscale変換はせず、Canvasの実ピクセル(canvas.width/height)を直接使う。
-function drawSpectrogramRow(payload: SpectrogramPayload) {
-  const canvas = canvases.spectrogram
-  const ctx = canvas.getContext('2d')!
-  const cw = canvas.width
-  const ch = canvas.height
-  const rowHeight = Math.max(1, Math.floor(ch / SPECTROGRAM_ROWS))
-
-  if (ch > rowHeight) {
-    const img = ctx.getImageData(0, 0, cw, ch - rowHeight)
-    ctx.putImageData(img, 0, rowHeight)
-  }
-
-  const n = payload.frequency.length
-  for (let i = 0; i < n; i++) {
-    const prevX = i > 0 ? xForFreq(payload.frequency[i - 1], cw) : 0
-    const curX = xForFreq(payload.frequency[i], cw)
-    const nextX = i < n - 1 ? xForFreq(payload.frequency[i + 1], cw) : cw
-    const xStart = i > 0 ? (prevX + curX) / 2 : 0
-    const xEnd = i < n - 1 ? (curX + nextX) / 2 : cw
-    ctx.fillStyle = spectrogramColor(payload.levelDb[i])
-    ctx.fillRect(xStart, 0, Math.max(1, xEnd - xStart), rowHeight)
-  }
-}
-```
-
-`connectWebChannel()`内に購読を追加:
-
-```typescript
-    dataBridge.spectrogramRowUpdated.connect((json: string) => {
-      try {
-        drawSpectrogramRow(JSON.parse(json) as SpectrogramPayload)
-      } catch (e) {
-        console.error('spectrogramRowUpdated parse error', e)
-      }
-    })
-```
+`<memory>`のインクルードが無ければ追加すること(`std::unique_ptr`/`std::make_unique`用)。
 
 ## 検証方法
 
 1. `cd web && npm run dev`を起動しておく。
 2. CLAUDE.mdの手順でビルドする。
-3. `OSM_JS_FRONTEND=1 OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`で実機確認する。
-4. Spectrogramチャートが表示され、新しい行が上部に追加されながら過去の行が下へスクロールしていくことを確認する(RTAと同様、リファレンス不要なのでこの検証環境でも実データが見えるはず)。
-5. 51行を超えて動作させ続けても(数分間)、描画が崩れず、クラッシュ・フリーズが起きないことを確認する(スクロール処理の累積誤差・メモリリークが無いか)。
-6. 無音/低レベル帯域が背景色(黒)に近い色で、大きな信号がある帯域が青→緑→黄→赤のグラデーションで表示されることを確認する。
-7. ウィンドウをリサイズし、履歴が消える(仕様として許容)ものの、クラッシュせず新しい行から正常に描画が再開されることを確認する。
-8. `npm run build`(tscの型チェック含む)が通ることを確認する。
-9. `OSM_JS_FRONTEND`を設定しない通常起動で、既存機能に変化がないことを確認する(回帰確認)。
+3. `OSM_JS_FRONTEND=1 OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`で起動する。既存Measurementソース分のJSウィンドウが1つ開くこと(Phase 1〜4までの回帰確認)。
+4. QML側のUIから新規Measurementを追加(`sourceList->addMeasurement()`相当の操作、通常は「+」ボタン等)し、**自動的に2つ目のJSウィンドウが開く**ことを確認する。2つのウィンドウがそれぞれ独立したデータ(別々の`sourceName`・別々の測定値)を表示すること(混線していないこと)。
+5. QML側からMeasurementソースを1つ削除し、**対応するJSウィンドウが自動的に閉じる**ことを確認する(クラッシュしないこと)。
+6. JSウィンドウをユーザー操作(ウィンドウの閉じるボタン)で手動クローズし、クラッシュしないこと・その後別のソースを追加/削除しても引き続き正しく動作することを確認する(内部の`m_panels`マップが不整合を起こしていないか)。
+7. Measurementソースを3〜5個同時に開いた状態で数分間動作させ、クラッシュ・著しいCPU/メモリ増加が無いか確認する(Activity Monitor等で確認)。結果を完了メモに記録する(実用上の上限の目安として)。
+8. `OSM_JS_FRONTEND`を設定しない通常起動で、JSウィンドウが一切開かず既存機能に変化がないことを確認する(回帰確認)。
+9. `npm run build`(tscの型チェック含む)が通ること(Phase 5はC++側のみの変更のため影響は無いはずだが、念のため確認)。
+
+## QML版の扱いについて(このPhaseでの判断)
+
+現時点でJSフロントエンドは以下の点でQML版に見劣りする:
+- コントロール類が一切無い(pointsPerOctave、Magnitude/RTAのモード・スケール切替、Spectrogramのlower/upper閾値など、Phase 1〜4で意図的に固定値にしてきたもの)。
+- coherence連動の線の透明度演出([js-frontend-phases.md](js-frontend-phases.md) Phase 2で見送った機能)が無い。
+- ウィンドウ管理・レイアウトがQMLのパネルシステムと統合されていない(独立した別ウィンドウ)。
+- `OSM_JS_FRONTEND`環境変数を明示的に立てないと使えない実験的機能のまま。
+
+これらを踏まえ、**QML側のチャートコードは削除せず、現状通りJSフロントエンドと併存させる**ことをこのPhaseの判断結果とする(Phase 5完了時点でJSが機能的に上回っている訳ではないため)。将来的にJS側がコントロール類も含めて実用レベルに達した時点で、改めてQML削除を検討する。この判断を完了後の作業でドキュメント化すること。
 
 ## 完了後の作業
 
-- [dev-docs/js-frontend-phases.md](js-frontend-phases.md) Phase 4のタスクチェックリスト・完了条件を更新し、進捗表を「完了」にする。QML版と描画方式が異なる点(毎フレーム全メッシュ再構築 vs 1行スクロール)、ウィンドウリサイズで履歴が消える制約を完了メモに明記する。
-- [dev-docs/customizations.md](customizations.md)に、Phase 4で追加したファイル・JSON payloadの形状(`levelDb`、フロアクランプ方式)を追記する。
-- Phase 4完了時点で5チャート全ての実装が揃うため、[js-frontend-phases.md](js-frontend-phases.md)の全体進捗サマリ文(冒頭)も更新すること。
+- [dev-docs/js-frontend-phases.md](js-frontend-phases.md) Phase 5のタスクチェックリスト・完了条件を更新し、進捗表を「完了」にする。複数ソース/複数パネルでの動作確認結果(上限の目安等)、QML版を併存継続する判断とその理由を完了メモに明記する。
+- [dev-docs/customizations.md](customizations.md)に、Phase 5で追加したファイル(`jsfrontendmanager.h`/`.cpp`)・ライフサイクル設計の要点(destroyedシグナルへの一本化)・QML併存継続の判断を追記する。
+- 全5チャート+複数パネル対応が完了した時点として、[js-frontend-phases.md](js-frontend-phases.md)冒頭の全体進捗サマリ文を更新する。

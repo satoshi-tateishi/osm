@@ -21,8 +21,7 @@
 #include <QQuickStyle>
 #include <QQmlContext>
 #include <QFontDatabase>
-#include <QWebChannel>
-#include <QWebEngineView>
+#include <memory>
 #include "common/settings.h"
 #include "common/logger.h"
 #include "common/notifier.h"
@@ -35,7 +34,7 @@
 #include "src/shared/sourcelist_shared.h"
 #include "src/source/group.h"
 #include "src/chart/variablechart.h"
-#include "src/chart/databridge.h"
+#include "src/chart/jsfrontendmanager.h"
 #include "src/source/measurement.h"
 
 #include "audio/client.h"
@@ -143,37 +142,10 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("remoteServer", &server);
     engine.rootContext()->setContextProperty("remoteClient", &client);
 
-    Chart::DataBridge *jsDataBridge = nullptr;
-    QWebChannel *jsWebChannel = nullptr;
-    QWebEngineView *jsView = nullptr;
-
+    std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
     if (qEnvironmentVariableIsSet("OSM_JS_FRONTEND")) {
-        Shared::Source measurementSource;
-        for (const auto &item : sourceList->items()) {
-            if (dynamic_cast<Measurement *>(item.get())) {
-                measurementSource = item;
-                break;
-            }
-        }
-
-        jsDataBridge = new Chart::DataBridge(&app);
-        if (measurementSource) {
-            jsDataBridge->setSource(measurementSource);
-        } else {
-            qWarning() << "OSM_JS_FRONTEND: Measurementソースが見つかりません";
-        }
-
-        jsWebChannel = new QWebChannel(&app);
-        jsWebChannel->registerObject(QStringLiteral("dataBridge"), jsDataBridge);
-
-        jsView = new QWebEngineView();
-        jsView->page()->setWebChannel(jsWebChannel);
-        jsView->resize(900, 600);
-        jsView->setWindowTitle(QStringLiteral("OSM JS Frontend (Phase 1)"));
-        jsView->load(qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER")
-                     ? QUrl(QStringLiteral("http://localhost:5173/"))
-                     : QUrl(QStringLiteral("qrc:/web/index.html")));
-        jsView->show();
+        jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
+            sourceList.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
     }
 
     engine.load(QUrl(QStringLiteral("qrc:/main.qml")));

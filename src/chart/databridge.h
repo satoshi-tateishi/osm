@@ -8,8 +8,8 @@
 
 namespace Chart {
 
-// Phase 1: 1ソース固定。複数パネル/複数ソース時のライフサイクル一般設計はPhase 5で行う
-// (dev-docs/js-frontend-phases.md Phase 5参照、意図的にここでは作り込まない)。
+// 1インスタンスは1ソースのデータを配信する。複数ソース時の生成・破棄は
+// JsFrontendManagerがJSウィンドウのライフサイクルに合わせて管理する。
 class DataBridge : public QObject
 {
     Q_OBJECT

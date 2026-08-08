@@ -383,3 +383,13 @@
 - 色はQML/OpenGL版と同じ固定しきい値`lower=-70dB`・`upper=-10dB`を用い、青(`#2196F3`)→緑(`#8BC34A`)→黄(`#FFEB3B`)→赤(`#F44336`)の3区間線形補間とした。`lower`以下は透明の代わりに不透明な黒で塗り、ピクセルスクロール後に過去行が透けて残らないようにした。
 - `canvas.width`/`height`を変更するとブラウザ仕様によりCanvas内容が消えるため、Phase 4ではウィンドウリサイズ時のSpectrogram履歴消失を許容する。リサイズ後は次の受信行から通常どおり描画を再開する。
 - TypeScript/ViteとQt本体のビルド後、開発サーバー版を実機起動してChrome DevTools ProtocolからCanvasを検査した。8秒継続後に全高が更新済みで色付き画素が存在すること、リサイズ直後に履歴が消えること、3秒後に新規行の描画が再開することを確認した。環境変数なしの通常起動でもプロセスが継続動作することを確認した。
+
+## フロントエンドJS化 Phase 5(複数ソースとライフサイクル)の実施
+
+[js-frontend-phases.md](js-frontend-phases.md) Phase 5参照。実験的JSフロントエンドを、起動時の先頭Measurement 1つ固定から、ルート`SourceList`直下の全Measurementに動的対応する構成へ変更した。
+
+- 新規`src/chart/jsfrontendmanager.h`/`.cpp`: `SourceList::postItemAppended`/`preItemRemoved`を購読し、Measurement 1つごとに`DataBridge`+`QWebChannel`+`QWebEngineView`を1組生成する。Group内のMeasurementはPhase 5のスコープ外で、トップレベルのみを管理する。
+- 後片付けは`QWebEngineView::destroyed`シグナルに一本化した。ユーザーによるウィンドウクローズとソース削除のどちらも`QWebEngineView::close()`と`Qt::WA_DeleteOnClose`を通し、その後`m_panels`からの除去と`DataBridge`/`QWebChannel`の`deleteLater()`を同じ経路で行う。`closePanel()`側では解放せず、二重解放を避ける。
+- `src/main.cpp`: 従来のbridge/channel/view直接生成を`std::unique_ptr<Chart::JsFrontendManager>`に置き換えた。`OSM_JS_FRONTEND`未設定時の通常起動は変更していない。`OpenSoundMeter.pro`に新規2ファイルを追加した。
+- 実機でMeasurement 5個に対応する5つのWebEngineページを確認し、ソース削除と再追加で対応するページIDが消滅・新規生成されることを確認した。5パネルで約5分間クラッシュなし。本体プロセスのサンプルは約495 MiB RSS/CPU約128%であり、5枚は動作確認済みの目安とするが、リソース消費上、無制限の常用を保証する値とはしない。
+- **QML版は併存を継続する**。JS版にはpoints-per-octaveやモード/スケール/しきい値のコントロール、coherence連動透過度、QMLパネルレイアウト統合がなく、環境変数が必要な実験機能のままである。JS版が実用機能を備えた時点で改めてQML版の削除を検討する。

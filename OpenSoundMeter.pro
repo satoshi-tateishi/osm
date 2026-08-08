@@ -25,6 +25,7 @@ SOURCES += src/main.cpp \
     src/chart/frequencybasedserieshelper.cpp \
     src/chart/seriessampler.cpp \
     src/chart/databridge.cpp \
+    src/chart/jsfrontendmanager.cpp \
     src/chart/groupdelayplot.cpp \
     src/chart/levelobject.cpp \
     src/chart/levelplot.cpp \
@@ -187,6 +188,7 @@ HEADERS += \
     src/chart/frequencybasedserieshelper.h \
     src/chart/seriessampler.h \
     src/chart/databridge.h \
+    src/chart/jsfrontendmanager.h \
     src/chart/groupdelayplot.h \
     src/chart/levelobject.h \
     src/chart/levelplot.h \
