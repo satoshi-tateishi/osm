@@ -8,6 +8,7 @@ interface SeriesPayload {
 interface MagnitudePayload extends SeriesPayload { magnitudeDb: (number | null)[] }
 interface PhasePayload extends SeriesPayload { phaseDeg: (number | null)[] }
 interface CoherencePayload extends SeriesPayload { coherenceValue: (number | null)[] }
+interface RTAPayload extends SeriesPayload { levelDb: (number | null)[] }
 
 declare const qt: any
 declare const QWebChannel: any
@@ -17,10 +18,12 @@ const XMAX = 20000
 const GRID_FREQS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <h1>OSM JS Frontend — Phase 2</h1>
+  <h1>OSM JS Frontend — Phase 3</h1>
   <p id="status">QWebChannel接続待ち...</p>
   <h2>Magnitude</h2>
   <canvas id="chart-magnitude" class="chart"></canvas>
+  <h2>RTA</h2>
+  <canvas id="chart-rta" class="chart"></canvas>
   <h2>Phase</h2>
   <canvas id="chart-phase" class="chart"></canvas>
   <h2>Coherence</h2>
@@ -29,6 +32,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
 const canvases = {
   magnitude: document.querySelector<HTMLCanvasElement>('#chart-magnitude')!,
+  rta: document.querySelector<HTMLCanvasElement>('#chart-rta')!,
   phase: document.querySelector<HTMLCanvasElement>('#chart-phase')!,
   coherence: document.querySelector<HTMLCanvasElement>('#chart-coherence')!,
 }
@@ -42,6 +46,7 @@ function resizeCanvas(canvas: HTMLCanvasElement, height: number) {
 }
 function resizeAll() {
   resizeCanvas(canvases.magnitude, 300)
+  resizeCanvas(canvases.rta, 220)
   resizeCanvas(canvases.phase, 220)
   resizeCanvas(canvases.coherence, 160)
 }
@@ -141,6 +146,13 @@ function drawPhase(payload: PhasePayload) {
     `${payload.sourceName} deg`, 180)
 }
 
+function drawRTA(payload: RTAPayload) {
+  const range = finiteRange(payload.levelDb)
+  if (!range) return
+  drawSeries(canvases.rta, payload.frequency, payload.levelDb, payload.color, range.min, range.max,
+    `${payload.sourceName} dB`)
+}
+
 function drawCoherence(payload: CoherencePayload) {
   drawSeries(canvases.coherence, payload.frequency, payload.coherenceValue, payload.color, 0, 1,
     `${payload.sourceName} coherence`)
@@ -178,6 +190,13 @@ function connectWebChannel() {
         drawCoherence(JSON.parse(json) as CoherencePayload)
       } catch (e) {
         console.error('coherenceUpdated parse error', e)
+      }
+    })
+    dataBridge.rtaUpdated.connect((json: string) => {
+      try {
+        drawRTA(JSON.parse(json) as RTAPayload)
+      } catch (e) {
+        console.error('rtaUpdated parse error', e)
       }
     })
   })

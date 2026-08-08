@@ -360,3 +360,14 @@
 - 本Phaseの意図的な簡略化として、Phaseのスプライン後アンラップはパス分断で代替し、`PhasePlot::rotate`は0度固定、Coherenceは`Type::Normal`固定とした。Magnitude/Phase線のcoherence連動透明度も見送った。
 - **レビュー修正: 無信号時の偽0度を描画しない**: リファレンス未接続/無信号時、Phaseの生値が有限の0度となって`std::isfinite(degrees)`だけでは無効と判定できないケースがあった。`PhaseSeriesSampler`で同じ帯域のMagnitudeパワーも並行集計し、そのdB値が非有限ならPhaseをJSONの`null`へ変換する。根本原因は`Measurement::averaging()`のPhase計算にMagnitude側と同等のNaN/Infガードがないことに起因する可能性が高いが、DSP本体の変更は今回のJSフロントエンド化のスコープ外とした。
 - 修正後のqrc同梱版を無信号状態で実機確認し、Chrome DevTools ProtocolからPhase Canvasのソース色画素が0件(グリッドのみ)であることを確認した。
+
+## フロントエンドJS化 Phase 3(RTA/Spectrum追加)の実施
+
+[js-frontend-phases.md](js-frontend-phases.md) Phase 3参照。Phase 1・2の測定データ配信パイプラインへRTAを追加し、実験的JSウィンドウを4チャート構成にした。
+
+- `src/chart/seriessampler.h`/`.cpp`: `RTASeriesSampler`を追加した。payloadは`{"sourceName", "color", "frequency": [...], "levelDb": [...]}`で、非有限値は他のサンプラーと同様に`null`へ変換する。読取区間はソースの`lock()`/`unlock()`で保護する。
+- 既存`RTASeriesRenderer::renderPPOLine()`と同じく、リファレンス不要の`module(i)`を用い、DC成分を除外してバンド内の二乗値を加算し、カウント数で割らずに`10 * log10(value)`へ変換する。既定の6 points/octaveでスプライン適用前のバンド中心値を送る。
+- `src/chart/databridge.h`/`.cpp`: 同じMeasurementの`readyRead()`を契機にRTAもサンプリングし、QWebChannelシグナル`rtaUpdated(QString)`でJSへpushする。
+- `web/src/main.ts`: `levelDb`を受け取るRTA Canvasを追加し、有限値から動的レンジを算出して共通の対数周波数軸・系列描画処理で表示する。
+- Phase 3ではRTAPlotの既定状態に合わせ、`Mode::Line`・`Scale::DBfs`・ピーク表示なしに固定した。`Scale::SPL`/`Phon`、Bars/Lines、ピーク表示とそれらのUIコントロールは対象外。
+- TypeScript/ViteとQt本体のビルド後、qrc同梱版を実機起動してChrome DevTools ProtocolからRTA Canvasを検査した。ソース色の曲線が描画され、3秒後に画素数とチェックサムが変化したため、実オーディオデータによるリアルタイム更新まで確認できた。

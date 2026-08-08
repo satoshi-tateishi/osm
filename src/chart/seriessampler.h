@@ -62,6 +62,24 @@ private:
     Shared::Source m_source;
 };
 
+class RTASeriesSampler : private FrequencyBasedSeriesHelper
+{
+public:
+    explicit RTASeriesSampler();
+
+    void setSource(const Shared::Source &source);
+
+    // 戻り値: {"sourceName","color","frequency":[...],"levelDb":[...]} のJSON文字列。
+    // RTAPlotの既定値(pointsPerOctave=6、Mode::Line、Scale::DBfs)に固定。
+    QString sampleJson(unsigned int pointsPerOctave = 6);
+
+protected:
+    const Shared::Source &source() const override;
+
+private:
+    Shared::Source m_source;
+};
+
 } // namespace Chart
 
 #endif // CHART_SERIESSAMPLER_H

@@ -196,4 +196,67 @@ QString CoherenceSeriesSampler::sampleJson(unsigned int pointsPerOctave)
     return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 }
 
+RTASeriesSampler::RTASeriesSampler() : FrequencyBasedSeriesHelper()
+{
+}
+
+void RTASeriesSampler::setSource(const Shared::Source &source)
+{
+    m_source = source;
+}
+
+const Shared::Source &RTASeriesSampler::source() const
+{
+    return m_source;
+}
+
+QString RTASeriesSampler::sampleJson(unsigned int pointsPerOctave)
+{
+    if (!m_source || !m_source->active()) {
+        return QString();
+    }
+
+    QJsonArray frequency, levelDb;
+    float value = 0.f;
+    bool hasData = false;
+
+    m_source->lock();
+    if (m_source->frequencyDomainSize()) {
+        hasData = true;
+
+        auto accumulate = [this, &value](const unsigned int &i) {
+            if (i == 0) {
+                return; // DC成分を除外(rtaseriesrenderer.cppと同じ)
+            }
+            auto m = m_source->module(i);
+            value += m * m;
+        };
+
+        auto collected = [&value, &frequency, &levelDb](const float &bandStart, const float &bandEnd,
+                                                         const unsigned int &) {
+            // RTAはバンド内エネルギー合計を表示するため、Magnitudeと異なりcountで割らない
+            // (rtaseriesrenderer.cpp renderPPOLine()と同じ式、Scale::DBfs固定でoffset=0)
+            auto db = 10.0 * std::log10(value);
+            frequency.append((bandStart + bandEnd) / 2.0);
+            levelDb.append(std::isfinite(db) ? QJsonValue(db) : QJsonValue());
+            value = 0.f;
+        };
+
+        iterate(pointsPerOctave, accumulate, collected);
+    }
+    m_source->unlock();
+
+    if (!hasData) {
+        return QString();
+    }
+
+    QJsonObject payload;
+    payload["sourceName"] = m_source->name();
+    payload["color"] = m_source->color().name();
+    payload["frequency"] = frequency;
+    payload["levelDb"] = levelDb;
+
+    return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+}
+
 } // namespace Chart

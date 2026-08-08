@@ -22,6 +22,7 @@ signals:
     void magnitudeUpdated(const QString &json);
     void phaseUpdated(const QString &json);
     void coherenceUpdated(const QString &json);
+    void rtaUpdated(const QString &json);
 
 private slots:
     void onReadyRead();
@@ -31,6 +32,7 @@ private:
     MagnitudeSeriesSampler m_magnitudeSampler;
     PhaseSeriesSampler m_phaseSampler;
     CoherenceSeriesSampler m_coherenceSampler;
+    RTASeriesSampler m_rtaSampler;
 };
 
 } // namespace Chart

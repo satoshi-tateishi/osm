@@ -1,183 +1,57 @@
-# 実装プロンプト: フロントエンドJS化 Phase 3(RTA/Spectrumを追加)
+# 修正プロンプト: Phase 3 — データが無い時にMagnitude/RTAだけグリッドすら描画されない不一致を解消
 
-このファイルは[js-frontend-phases.md](js-frontend-phases.md) Phase 3を実装するための指示書。Phase 1(Magnitude単体疎通)・Phase 2(Phase・Coherenceを追加)は完了・レビュー済み(Phase 1: データ競合・無音時null処理の修正、Phase 2: 無信号時にPhaseだけ偽の0度を返す不具合の修正、を含む)。Phase 3はRTA(Spectrum)チャートを追加する。[js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) 3.4節の通り、RTAは単一系列・リファレンスチャンネル不使用でMagnitude/Phase/Coherenceより単純。
+Phase 3(RTA/Spectrumを追加)の実装をレビューし、修正が必要な問題が1件見つかった。Phase 4に進む前にここで直す。
 
-## 前提・スコープの確認
+## 前提
 
-`src/chart/opengl/rtaseriesrenderer.cpp`を調査した結果、以下の点を確認・スコープ決定した:
+C++側(`RTASeriesSampler`のロックパターン・DC成分除外・count非除算のdB計算)はPhase 3プロンプト通り正確に実装されており、問題なし。実機ビルド・起動・CDP経由での検証まで行い、`RTASeriesSampler`が実データ(60点、リファレンス不要のため他3系列と異なり有効な値)を正しく返すことも確認した。60秒間の連続動作でクラッシュもない。
 
-- RTAは`magnitudeRaw(i)`(データ/リファレンスの伝達関数)ではなく**`module(i)`(単一チャンネルの生振幅)を使う**([js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md) 2.2節の通り)。そのため**リファレンスチャンネルの有無に影響されない**。この検証環境ではリファレンス側に信号が無く(Phase 1・Phase 2のレビューで確認済み)Magnitude/Phase/Coherenceが軒並みnullになっていたが、データ側(マイク等)には実際に信号があった(`level ≈ -58dB`)ことをPhase 1レビュー時の診断ログで確認済みなので、**RTAは実データで検証しやすいはず**。
-- `RTAPlot`には`Mode`(Line/Bars/Lines)・`Scale`(DBfs/SPL/Phon)・`showPeaks`のプロパティがあるが、Phase 3では既定値である**`Mode::Line`・`Scale::DBfs`・ピーク表示なし**に固定する(「コントロールなし」の方針を踏襲)。`Scale::SPL`/`Phon`は`EqualLoudnessContour`による追加変換が必要でスコープ外。
-- `renderPPOLine()`(200〜258行目)の集計式は**Magnitudeと異なり、バンド内のカウント数で割らない**(`10 * log10f(value)`であって`10 * log10f(value / count)`ではない)。RTAはバンド内エネルギーの「合計」を表示する設計。この違いを正確に再現すること。
-- `accumulate`ラムダは`i == 0`(DC成分)を明示的にスキップしている(220〜225行目)。`FrequencyBasedSeriesHelper::iterate()`自体もループを`i = 1`から開始するため実質的に冗長だが、既存コードとの忠実な対応を優先しそのまま再現する。
+## 問題: データが無い時、チャートによって「空のグリッドが出る」/「何も描画されない」が不統一
 
-## 実装1: `src/chart/seriessampler.h` / `.cpp`に`RTASeriesSampler`を追加
+**現象**: この検証環境ではリファレンス無信号のためMagnitude/Phase/Coherenceがすべて`null`だが、CDP経由でCanvasのピクセルを比較すると:
 
-`src/chart/seriessampler.h`の`CoherenceSeriesSampler`の直後に追加:
-
-```cpp
-class RTASeriesSampler : private FrequencyBasedSeriesHelper
-{
-public:
-    explicit RTASeriesSampler();
-
-    void setSource(const Shared::Source &source);
-
-    // 戻り値: {"sourceName","color","frequency":[...],"levelDb":[...]} のJSON文字列。
-    // RTAPlotの既定値(pointsPerOctave=6、Mode::Line、Scale::DBfs)に固定。
-    QString sampleJson(unsigned int pointsPerOctave = 6);
-
-protected:
-    const Shared::Source &source() const override;
-
-private:
-    Shared::Source m_source;
-};
+```
+chart-magnitude: nonBlack=0     (背景・グリッドすら描画されていない)
+chart-rta:       nonBlack=22617 (実データがあるので通常描画)
+chart-phase:     nonBlack=13026 (背景・グリッドは描画されている、線だけが無い)
+chart-coherence: nonBlack=10141 (同上)
 ```
 
-`src/chart/seriessampler.cpp`の末尾(`CoherenceSeriesSampler`の実装の後、`} // namespace Chart`の前)に追加:
+**原因**: `web/src/main.ts`の`drawMagnitude()`/`drawRTA()`は`finiteRange()`が`null`(有効な値が1つも無い)を返すと`drawSeries()`を呼ばずに即`return`しており、背景の黒塗り・グリッド線・ラベルを含め一切描画しない。一方`drawPhase()`/`drawCoherence()`は固定レンジ(-180..180度、0..1)を使うため`finiteRange()`を呼ばず、データの有無にかかわらず常に`drawSeries()`を呼ぶ(結果、線は無くても背景・グリッド・ラベルは表示される)。
 
-```cpp
-RTASeriesSampler::RTASeriesSampler() : FrequencyBasedSeriesHelper()
-{
-}
+この不整合により、リファレンス未接続などでMagnitude/RTAにデータが来ていない間、ユーザーからは「その2チャートだけ表示が壊れている(真っ暗/透明)」ように見えてしまう。データが無いこと自体は(Phase 1・Phase 2の修正通り)正しい挙動だが、**見せ方をPhase/Coherenceと揃える**必要がある。
 
-void RTASeriesSampler::setSource(const Shared::Source &source)
-{
-    m_source = source;
-}
+## 修正方法: `finiteRange()`が`null`のときもフォールバック値でグリッドだけは描画する
 
-const Shared::Source &RTASeriesSampler::source() const
-{
-    return m_source;
-}
-
-QString RTASeriesSampler::sampleJson(unsigned int pointsPerOctave)
-{
-    if (!m_source || !m_source->active()) {
-        return QString();
-    }
-
-    QJsonArray frequency, levelDb;
-    float value = 0.f;
-    bool hasData = false;
-
-    m_source->lock();
-    if (m_source->frequencyDomainSize()) {
-        hasData = true;
-
-        auto accumulate = [this, &value](const unsigned int &i) {
-            if (i == 0) {
-                return; // DC成分を除外(rtaseriesrenderer.cppと同じ)
-            }
-            auto m = m_source->module(i);
-            value += m * m;
-        };
-
-        auto collected = [&value, &frequency, &levelDb](const float &bandStart, const float &bandEnd,
-        const unsigned int &) {
-            // RTAはバンド内エネルギー合計を表示するため、Magnitudeと異なりcountで割らない
-            // (rtaseriesrenderer.cpp renderPPOLine()と同じ式、Scale::DBfs固定でoffset=0)
-            auto db = 10.0 * std::log10(value);
-            frequency.append((bandStart + bandEnd) / 2.0);
-            levelDb.append(std::isfinite(db) ? QJsonValue(db) : QJsonValue());
-            value = 0.f;
-        };
-
-        iterate(pointsPerOctave, accumulate, collected);
-    }
-    m_source->unlock();
-
-    if (!hasData) {
-        return QString();
-    }
-
-    QJsonObject payload;
-    payload["sourceName"] = m_source->name();
-    payload["color"] = m_source->color().name();
-    payload["frequency"] = frequency;
-    payload["levelDb"] = levelDb;
-
-    return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
-}
-```
-
-## 実装2: `src/chart/databridge.h` / `.cpp`の拡張
-
-`databridge.h`: `CoherenceSeriesSampler m_coherenceSampler;`の下に`RTASeriesSampler m_rtaSampler;`を追加、`signals:`に追加:
-
-```cpp
-    void rtaUpdated(const QString &json);
-```
-
-`databridge.cpp`の`setSource()`に、`m_coherenceSampler.setSource(source);`の直後に追加:
-
-```cpp
-    m_rtaSampler.setSource(source);
-```
-
-`onReadyRead()`の末尾(`coherenceUpdated`のemitの後)に追加:
-
-```cpp
-    auto rtaJson = m_rtaSampler.sampleJson();
-    if (!rtaJson.isEmpty()) {
-        emit rtaUpdated(rtaJson);
-    }
-```
-
-`OpenSoundMeter.pro`の変更は不要(既存ファイルへの追記のみ)。
-
-## 実装3: `web/src/main.ts`の拡張(RTAチャートを追加)
-
-`SeriesPayload`を継承する型を追加:
+`web/src/main.ts`の`drawMagnitude()`・`drawRTA()`を以下に置き換える(`if (!range) return`を撤去し、フォールバックのレンジを使う。`drawSeries()`自体は値が`null`/非有限ならその点を単に描画しないので、フォールバックのyMin/yMaxを渡しても実害はない):
 
 ```typescript
-interface RTAPayload extends SeriesPayload { levelDb: (number | null)[] }
+function drawMagnitude(payload: MagnitudePayload) {
+  const range = finiteRange(payload.magnitudeDb) ?? { min: -1, max: 1 }
+  drawSeries(canvases.magnitude, payload.frequency, payload.magnitudeDb, payload.color, range.min, range.max,
+    `${payload.sourceName} dB`)
+}
 ```
-
-`#app`のHTML(`document.querySelector<HTMLDivElement>('#app')!.innerHTML = ...`)に、Coherenceの前後どちらかに追加(例: Magnitudeの直後):
-
-```html
-  <h2>RTA</h2>
-  <canvas id="chart-rta" class="chart"></canvas>
-```
-
-`canvases`オブジェクトに`rta: document.querySelector<HTMLCanvasElement>('#chart-rta')!,`を追加。`resizeAll()`に`resizeCanvas(canvases.rta, 220)`を追加(Magnitudeの直後など、Coherenceより前が見やすい)。
-
-描画関数を追加(`drawCoherence`の直前などに配置):
 
 ```typescript
 function drawRTA(payload: RTAPayload) {
-  const range = finiteRange(payload.levelDb)
-  if (!range) return
+  const range = finiteRange(payload.levelDb) ?? { min: -1, max: 1 }
   drawSeries(canvases.rta, payload.frequency, payload.levelDb, payload.color, range.min, range.max,
     `${payload.sourceName} dB`)
 }
 ```
 
-`connectWebChannel()`内、`dataBridge.coherenceUpdated.connect(...)`の直後に購読を追加:
-
-```typescript
-    dataBridge.rtaUpdated.connect((json: string) => {
-      try {
-        drawRTA(JSON.parse(json) as RTAPayload)
-      } catch (e) {
-        console.error('rtaUpdated parse error', e)
-      }
-    })
-```
+`finiteRange()`関数自体(nullを返す実装)は変更不要。
 
 ## 検証方法
 
-1. `cd web && npm run dev`を起動しておく。
-2. CLAUDE.mdの手順でビルドする。
-3. `OSM_JS_FRONTEND=1 OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`で実機確認する(`open`では環境変数が渡らない)。
-4. RTAチャートが表示され、この検証環境の実データ(マイク等のデータチャンネル信号)でリアルタイムに変化する実際の曲線が描かれることを確認する(前提節の通り、リファレンス不要なのでMagnitude/Phase/Coherenceと違って実データが見えるはず。もし依然としてnullばかりなら、データチャンネル自体に信号が来ていない可能性があるため、DevTools Protocol経由で`levelDb`配列の値を直接確認して切り分けること)。
+1. CLAUDE.mdの手順でビルドする。
+2. `cd web && npm run dev`を起動しておき、`OSM_JS_FRONTEND=1 OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`で実機確認する。
+3. リファレンス未接続/無音状態(この検証環境で再現できた状態)で、Magnitude/RTAチャートも他2チャートと同様に背景・グリッド・ラベルが表示され(線だけが無い状態)、真っ黒/透明にならないことを確認する(CDP経由で各`<canvas>`の`getImageData`を取り、`nonBlack`が0にならないことを確認するのが確実)。
+4. 実オーディオ入力(データ・リファレンスとも有効)がある状態で、Magnitude/RTAが以前通り正しい曲線で描画されることを確認する(この修正で表示自体が壊れていないか)。
 5. `npm run build`(tscの型チェック含む)が通ることを確認する。
-6. 実オーディオ入力を数分間接続したまま動作させ、クラッシュ・フリーズが起きないこと(新規`RTASeriesSampler`のロックパターンが正しいかの確認)。
-7. `OSM_JS_FRONTEND`を設定しない通常起動で、既存機能に変化がないことを確認する(回帰確認)。
 
 ## 完了後の作業
 
-- [dev-docs/js-frontend-phases.md](js-frontend-phases.md) Phase 3のタスクチェックリスト・完了条件を更新し、進捗表を「完了」にする。`Mode::Line`/`Scale::DBfs`固定などのスコープ簡略化を完了メモに明記する。
-- [dev-docs/customizations.md](customizations.md)に、Phase 3で追加したファイル・JSON payloadの形状(`levelDb`)を追記する(これまでのPhaseのエントリと同じ見出しパターン)。
+- [dev-docs/js-frontend-phases.md](js-frontend-phases.md) Phase 3の完了メモに、この修正内容(Magnitude/RTAのグリッド未描画を解消し、データ有無に関わらず4チャートの見た目を統一したこと)を追記する。
+- [dev-docs/customizations.md](customizations.md)のPhase 3エントリに、この修正を追記する。

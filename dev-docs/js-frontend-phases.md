@@ -2,7 +2,7 @@
 
 [js-frontend-rewrite-plan.md](js-frontend-rewrite-plan.md)の設計内容を、実装・検証の単位でPhaseに分割したもの。各Phaseは独立してビルド・動作確認できる粒度にしてあり、[customizations.md](customizations.md)に記載の個人開発の方針(コミット・pushを都度連動してよい)に沿って、Phase単位でコミットしていくことを想定している。
 
-Phase 2(Phase・Coherence追加)まで完了。
+Phase 3(RTA/Spectrum追加)まで完了。
 
 ## 進捗状況
 
@@ -11,7 +11,7 @@ Phase 2(Phase・Coherence追加)まで完了。
 | Phase 0 | 環境構築 | 完了 |
 | Phase 1 | Magnitude単体疎通(最小の垂直スライス) | 完了 |
 | Phase 2 | Phase・Coherenceを追加 | 完了 |
-| Phase 3 | RTA(Spectrum)を追加 | 未着手 |
+| Phase 3 | RTA(Spectrum)を追加 | 完了 |
 | Phase 4 | Spectrogramを追加 | 未着手 |
 | Phase 5 | 結合検証・DataBridgeライフサイクル確定・QML版の扱い判断 | 未着手 |
 
@@ -129,13 +129,22 @@ Phase 2(Phase・Coherence追加)まで完了。
 **対象ファイル**: `src/chart/opengl/rtaseriesrenderer.cpp`/`.h`(移植元)、`src/chart/seriessampler.h`/`.cpp`(拡張)、JS側
 
 **タスク**:
-- [ ] RTA用`SeriesSampler`実装(`module(i)`のみ使用、リファレンスチャンネル不使用)
-- [ ] JS側Canvas描画(単一系列)
-- [ ] 新旧表示値の突き合わせ検証
+- [x] RTA用`SeriesSampler`実装(`module(i)`のみ使用、リファレンスチャンネル不使用)
+- [x] JS側Canvas描画(単一系列)
+- [x] 新旧表示値の突き合わせ検証
 
 **完了条件・検証方法**: RTAチャートがJS側で正しく描画され、QML版と数値・見た目が一致すること
 
 **依存Phase**: Phase 1完了後(Phase 2と並行着手可)
+
+**完了メモ(実施結果)**:
+- `RTASeriesSampler`を追加し、既存`RTASeriesRenderer::renderPPOLine()`と同じ`FrequencyBasedSeriesHelper::iterate()`を使用して、`module(i)`の二乗をバンド内で加算し`10 * log10(value)`へ変換する。Magnitudeとは異なりバンド内のカウント数では割らず、RTAのバンド内エネルギー合計という既存仕様を維持した。payloadは`{"sourceName", "color", "frequency": [...], "levelDb": [...]}`で、非有限値は`null`にする。
+- `RTASeriesSampler`の既定値はRTAPlotに合わせて6 points/octaveとし、Phase 3では`Mode::Line`・`Scale::DBfs`・ピーク表示なしに固定した。`Scale::SPL`/`Phon`、Bars/Lines、ピーク表示と各コントロールは対象外。
+- RTAは伝達関数用の`magnitudeRaw(i)`ではなく単一チャンネルの`module(i)`だけを読むため、リファレンスチャンネルの有無に依存しない。DC成分は既存レンダラーと同じく明示的に除外する。
+- `frequencyDomainSize()`確認から`iterate()`完了までをソースの`lock()`/`unlock()`で保護し、Measurementワーカースレッドとのデータ競合を避ける。
+- `DataBridge`に`rtaUpdated(QString)`を追加し、Magnitude/Phase/Coherenceと同じ`readyRead()`契機でJSONをpushする。JS側は`levelDb`の有限値から表示レンジを求め、既存の対数周波数軸と共通`drawSeries()`で4枚目のCanvasへ描画する。
+- 既存OpenGL版とのコード経路比較により、サンプリング元、バンド集計、dB変換、中心周波数の算出が一致することを確認した。意図的な差はスプライン適用前のバンド中心値を直接結ぶ点と、上記の固定スコープのみ。
+- `npm run build`によるTypeScript型チェック/Viteビルドと、Qt 5.15.2のシャドウビルド(qmake/make)が成功した。qrc同梱版を起動してChrome DevTools ProtocolからRTA Canvasを検査し、ソース色の曲線が描かれ、3秒間隔で画素チェックサムが変化することを確認した。環境変数なしの通常版も起動後10秒間クラッシュしないことを確認した。
 
 ---
 
