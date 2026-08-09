@@ -13,6 +13,7 @@ namespace Chart {
 class DataBridge;
 class SourceTreeBridge;
 class SettingsBridge;
+class GlobalSmoothing;
 
 // Owns the single persistent JS frontend window and its fixed WebChannel
 // object set. Dynamic source state is transported by bridge signals.
@@ -20,13 +21,15 @@ class JsFrontendManager : public QObject
 {
     Q_OBJECT
 public:
-    explicit JsFrontendManager(SourceList *sourceList, Generator *generator, bool useDevServer,
+    explicit JsFrontendManager(SourceList *sourceList, Generator *generator,
+                               GlobalSmoothing *globalSmoothing, bool useDevServer,
                                QObject *parent = nullptr);
     ~JsFrontendManager() override;
 
 private:
     SourceList *m_sourceList;
     Generator *m_generator;
+    GlobalSmoothing *m_globalSmoothing;
     QWebChannel *m_channel;
     QWebEngineView *m_view;
     DataBridge *m_dataBridge;

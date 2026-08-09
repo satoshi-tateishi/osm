@@ -12,6 +12,8 @@ class SourceList;
 
 namespace Chart {
 
+class GlobalSmoothing;
+
 // トップレベルのMeasurement全件についてサンプラー一式を保持し、各ソースの
 // readyRead()のたびに該当ソース分のJSONを配信する(複数ウィンドウではなく
 // 単一のchartDataオブジェクトが全ソース分を多重化して流す設計)。
@@ -19,7 +21,7 @@ class DataBridge : public QObject
 {
     Q_OBJECT
 public:
-    explicit DataBridge(SourceList *sourceList, QObject *parent = nullptr);
+    explicit DataBridge(SourceList *sourceList, GlobalSmoothing *globalSmoothing, QObject *parent = nullptr);
     ~DataBridge() override;
 
 signals:
@@ -35,6 +37,7 @@ private slots:
     void onItemAppended(const Shared::Source &item);
     void onItemRemoved(QUuid uuid);
     void onReadyRead();
+    void onGlobalPointsPerOctaveChanged(unsigned int pointsPerOctave);
 
 private:
     struct SamplerSet {
@@ -45,7 +48,10 @@ private:
         SpectrogramSeriesSampler spectrogram;
     };
 
+    void emitCurves(SamplerSet *samplers, unsigned int pointsPerOctave);
+
     SourceList *m_sourceList;
+    GlobalSmoothing *m_globalSmoothing;
     QMap<QUuid, SamplerSet *> m_samplers;
 };
 

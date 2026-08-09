@@ -8,6 +8,7 @@ export interface ChannelObjects {
   settings: any
   generator: any
   outputDevices: any
+  globalSmoothing: any
 }
 
 let resolveObjects: (objects: ChannelObjects) => void
@@ -21,12 +22,12 @@ export function connectWebChannel(onStatus: (message: string) => void) {
     return
   }
   new QWebChannel(qt.webChannelTransport, (channel: any) => {
-    const { sourceList, sourceTree, chartData, settings, generator, outputDevices } = channel.objects
-    if (!sourceList || !sourceTree || !chartData || !settings || !generator || !outputDevices) {
-      onStatus('必要なチャンネルオブジェクト(sourceList/sourceTree/chartData/settings/generator/outputDevices)が見つかりません')
+    const { sourceList, sourceTree, chartData, settings, generator, outputDevices, globalSmoothing } = channel.objects
+    if (!sourceList || !sourceTree || !chartData || !settings || !generator || !outputDevices || !globalSmoothing) {
+      onStatus('必要なチャンネルオブジェクト(sourceList/sourceTree/chartData/settings/generator/outputDevices/globalSmoothing)が見つかりません')
       return
     }
     onStatus('QWebChannel接続済み')
-    resolveObjects({ sourceList, sourceTree, chartData, settings, generator, outputDevices })
+    resolveObjects({ sourceList, sourceTree, chartData, settings, generator, outputDevices, globalSmoothing })
   })
 }

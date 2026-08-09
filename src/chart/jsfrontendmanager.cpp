@@ -5,6 +5,7 @@
 
 #include "audio/devicemodel.h"
 #include "databridge.h"
+#include "globalsmoothing.h"
 #include "settingsbridge.h"
 #include "sourcetreebridge.h"
 #include "src/generator/generator.h"
@@ -12,11 +13,13 @@
 
 namespace Chart {
 
-JsFrontendManager::JsFrontendManager(SourceList *sourceList, Generator *generator, bool useDevServer,
+JsFrontendManager::JsFrontendManager(SourceList *sourceList, Generator *generator,
+                                     GlobalSmoothing *globalSmoothing, bool useDevServer,
                                      QObject *parent)
-    : QObject(parent), m_sourceList(sourceList), m_generator(generator)
+    : QObject(parent), m_sourceList(sourceList), m_generator(generator),
+      m_globalSmoothing(globalSmoothing)
 {
-    m_dataBridge = new DataBridge(m_sourceList, this);
+    m_dataBridge = new DataBridge(m_sourceList, m_globalSmoothing, this);
     m_sourceTreeBridge = new SourceTreeBridge(m_sourceList, this);
     m_settingsBridge = new SettingsBridge(m_sourceList, this);
 
@@ -26,6 +29,7 @@ JsFrontendManager::JsFrontendManager(SourceList *sourceList, Generator *generato
     m_channel->registerObject(QStringLiteral("chartData"), m_dataBridge);
     m_channel->registerObject(QStringLiteral("settings"), m_settingsBridge);
     m_channel->registerObject(QStringLiteral("generator"), m_generator);
+    m_channel->registerObject(QStringLiteral("globalSmoothing"), m_globalSmoothing);
 
     auto *outputDeviceModel = new audio::DeviceModel(this);
     outputDeviceModel->setScope(audio::DeviceModel::OutputOnly);

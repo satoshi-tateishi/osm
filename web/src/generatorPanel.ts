@@ -9,14 +9,16 @@ export function setupGeneratorPanel(container: HTMLElement, generator: any, outp
     <div class="generator-grid">
       <select class="generator-device" data-gen-device></select>
       <div class="generator-level" data-gen-level>0 dB</div>
-      <button class="generator-toggle" data-gen-toggle>On</button>
+      <button class="generator-toggle" data-gen-toggle>OFF</button>
 
       <details class="generator-channels">
         <summary data-gen-channels-summary>Ch: —</summary>
         <div class="generator-channels-list" data-gen-channels-list></div>
       </details>
-      <button class="generator-step" data-gen-dec>&minus;</button>
-      <button class="generator-step" data-gen-inc>+</button>
+      <div class="generator-level-buttons">
+        <button class="generator-step" data-gen-dec>&minus;</button>
+        <button class="generator-step" data-gen-inc>+</button>
+      </div>
     </div>
   `
 
@@ -30,7 +32,9 @@ export function setupGeneratorPanel(container: HTMLElement, generator: any, outp
 
   function syncFromGenerator() {
     levelEl.textContent = `${Math.round(generator.gain)} dB`
-    toggleEl.classList.toggle('generator-on', Boolean(generator.enabled))
+    const enabled = Boolean(generator.enabled)
+    toggleEl.classList.toggle('generator-on', enabled)
+    toggleEl.textContent = enabled ? 'ON' : 'OFF'
   }
   syncFromGenerator()
   generator.enabledChanged.connect(syncFromGenerator)
@@ -50,6 +54,30 @@ export function setupGeneratorPanel(container: HTMLElement, generator: any, outp
     const labels = [...selected].sort((a, b) => a - b).map((i) => names[i] ?? String(i + 1))
     channelsSummaryEl.textContent = `Ch: ${labels.join(', ')}`
   }
+
+  const channelsDetailsEl = container.querySelector<HTMLDetailsElement>('.generator-channels')!
+
+  function positionChannelsList() {
+    const chartRect = document.querySelector<HTMLElement>('.pane-center')?.getBoundingClientRect()
+    const width = channelsListEl.offsetWidth || 160
+    const height = channelsListEl.offsetHeight || Math.min(240, window.innerHeight * 0.5)
+
+    let left = chartRect ? chartRect.right - width - 16 : window.innerWidth - width - 16
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8))
+    channelsListEl.style.left = `${left}px`
+
+    const bottomAnchor = (chartRect?.bottom ?? window.innerHeight) - 16
+    let top = bottomAnchor - height
+    top = Math.max(8, Math.min(top, window.innerHeight - height - 8))
+    channelsListEl.style.top = `${top}px`
+  }
+
+  channelsDetailsEl.addEventListener('toggle', () => {
+    if (channelsDetailsEl.open) positionChannelsList()
+  })
+  window.addEventListener('resize', () => {
+    if (channelsDetailsEl.open) positionChannelsList()
+  })
 
   function populateChannelList() {
     outputDevices.indexOf(generator.deviceId, (deviceIndex: number) => {
@@ -71,6 +99,7 @@ export function setupGeneratorPanel(container: HTMLElement, generator: any, outp
           })
         })
         updateChannelsSummary(names, selected)
+        if (channelsDetailsEl.open) positionChannelsList()
       })
     })
   }

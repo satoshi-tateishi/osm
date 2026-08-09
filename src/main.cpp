@@ -154,7 +154,8 @@ int main(int argc, char *argv[])
     std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
     if (!jsFrontendDisabled) {
         jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
-            sourceList.get(), generator.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
+            sourceList.get(), generator.get(), &globalSmoothing,
+            qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
 
         if (!qmlFrontendRequested) {
             if (auto *qmlWindow = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {

@@ -6,6 +6,8 @@ import { renderSettingsPanel, renderMeter, type SettingsPayload, type MeterPaylo
 import { closeSettingsPopover, getOpenSettingsUuid, getSettingsPopoverContentIfOpenFor, openSettingsPopover, repositionSettingsPopover } from './settingsPopover'
 import { channelReady, connectWebChannel } from './webchannel'
 import { setupGeneratorPanel } from './generatorPanel'
+import { setupSmoothingPanel } from './smoothingPanel'
+import { setupSpectrogramThresholds } from './spectrogramThresholds'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="pane pane-left">
@@ -19,7 +21,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <h2>RTA</h2>
     <canvas id="chart-rta" class="chart"></canvas>
     <h2>Spectrogram</h2>
-    <canvas id="chart-spectrogram" class="chart"></canvas>
+    <div class="chart-spectrogram-wrap">
+      <canvas id="chart-spectrogram" class="chart"></canvas>
+      <div id="spectrogram-thresholds" class="spectrogram-thresholds"></div>
+    </div>
     <h2>Phase</h2>
     <canvas id="chart-phase" class="chart"></canvas>
     <h2>Coherence</h2>
@@ -29,6 +34,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div class="pane-right-scroll">
       <h2>Transfer Function</h2>
       <div id="measurement-list"></div>
+    </div>
+    <div class="pane-right-smoothing">
+      <h2>Smoothing</h2>
+      <div id="smoothing-panel"></div>
     </div>
     <div class="pane-right-generator">
       <h2>Generator</h2>
@@ -40,6 +49,7 @@ const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
 const sourceTreeEl = document.querySelector<HTMLDivElement>('#source-tree')!
 const measurementListEl = document.querySelector<HTMLDivElement>('#measurement-list')!
 const generatorPanelEl = document.querySelector<HTMLDivElement>('#generator-panel')!
+const smoothingPanelEl = document.querySelector<HTMLDivElement>('#smoothing-panel')!
 const centerPaneEl = document.querySelector<HTMLDivElement>('.pane-center')!
 const canvases: charts.ChartCanvases = {
   magnitude: document.querySelector<HTMLCanvasElement>('#chart-magnitude')!,
@@ -62,13 +72,19 @@ function resizeAll() {
   resizeCanvas(canvases.spectrogram, 220)
   resizeCanvas(canvases.phase, 220)
   resizeCanvas(canvases.coherence, 160)
+  charts.redrawAll(canvases)
 }
 window.addEventListener('resize', resizeAll)
 resizeAll()
 
+const spectrogramThresholdsEl = document.querySelector<HTMLDivElement>('#spectrogram-thresholds')!
+setupSpectrogramThresholds(spectrogramThresholdsEl, (lower, upper) => {
+  charts.setSpectrogramThresholds(lower, upper)
+})
+
 connectWebChannel((message) => { statusEl.textContent = message })
 
-channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, sourceList }) => {
+channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, sourceList, globalSmoothing }) => {
   let currentSettingsUuid: string | null = null
 
   function renderPanel(payload: SettingsPayload) {
@@ -193,4 +209,5 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
   })
 
   setupGeneratorPanel(generatorPanelEl, generator, outputDevices)
+  setupSmoothingPanel(smoothingPanelEl, globalSmoothing)
 })

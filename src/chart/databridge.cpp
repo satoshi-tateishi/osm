@@ -5,16 +5,19 @@
 #include <QJsonObject>
 
 #include "abstract/source.h"
+#include "globalsmoothing.h"
 #include "src/source/measurement.h"
 #include "src/sourcelist.h"
 
 namespace Chart {
 
-DataBridge::DataBridge(SourceList *sourceList, QObject *parent)
-    : QObject(parent), m_sourceList(sourceList)
+DataBridge::DataBridge(SourceList *sourceList, GlobalSmoothing *globalSmoothing, QObject *parent)
+    : QObject(parent), m_sourceList(sourceList), m_globalSmoothing(globalSmoothing)
 {
     connect(m_sourceList, &SourceList::postItemAppended, this, &DataBridge::onItemAppended);
     connect(m_sourceList, &SourceList::preItemRemoved, this, &DataBridge::onItemRemoved);
+    connect(m_globalSmoothing, &GlobalSmoothing::pointsPerOctaveChanged, this,
+            &DataBridge::onGlobalPointsPerOctaveChanged);
 
     for (const auto &item : m_sourceList->items()) {
         onItemAppended(item);
@@ -75,28 +78,14 @@ void DataBridge::onReadyRead()
         return;
     }
     auto *samplers = it.value();
+    auto pointsPerOctave = m_globalSmoothing->pointsPerOctave();
 
-    auto magnitudeJson = samplers->magnitude.sampleJson();
-    if (!magnitudeJson.isEmpty()) {
-        emit magnitudeUpdated(magnitudeJson);
-    }
+    emitCurves(samplers, pointsPerOctave);
 
-    auto phaseJson = samplers->phase.sampleJson();
-    if (!phaseJson.isEmpty()) {
-        emit phaseUpdated(phaseJson);
-    }
-
-    auto coherenceJson = samplers->coherence.sampleJson();
-    if (!coherenceJson.isEmpty()) {
-        emit coherenceUpdated(coherenceJson);
-    }
-
-    auto rtaJson = samplers->rta.sampleJson();
-    if (!rtaJson.isEmpty()) {
-        emit rtaUpdated(rtaJson);
-    }
-
-    auto spectrogramJson = samplers->spectrogram.sampleJson();
+    // スペクトログラムは時系列に1行ずつ積み上げる表示のため、readyRead()の
+    // タイミング(=新しい時間フレーム)でのみサンプリングする。globalSmoothing
+    // 変更時の再サンプリングでは行を増やさない(emitCurvesに含めない理由)。
+    auto spectrogramJson = samplers->spectrogram.sampleJson(pointsPerOctave);
     if (!spectrogramJson.isEmpty()) {
         emit spectrogramRowUpdated(spectrogramJson);
     }
@@ -117,6 +106,39 @@ void DataBridge::onReadyRead()
                 : QJsonValue();
         payload["sampleRate"] = static_cast<double>(measurement->sampleRate());
         emit levelUpdated(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
+    }
+}
+
+void DataBridge::onGlobalPointsPerOctaveChanged(unsigned int pointsPerOctave)
+{
+    // Magnitude/Phase/Coherence/RTAは現在値を毎回全置換で描画する方式のため、
+    // 保持中の最新ソース状態から再サンプリングして即座に再描画させる。
+    // スペクトログラムは時系列の行積み上げ表示のためここでは再サンプリングしない。
+    for (auto *samplers : qAsConst(m_samplers)) {
+        emitCurves(samplers, pointsPerOctave);
+    }
+}
+
+void DataBridge::emitCurves(SamplerSet *samplers, unsigned int pointsPerOctave)
+{
+    auto magnitudeJson = samplers->magnitude.sampleJson(pointsPerOctave);
+    if (!magnitudeJson.isEmpty()) {
+        emit magnitudeUpdated(magnitudeJson);
+    }
+
+    auto phaseJson = samplers->phase.sampleJson(pointsPerOctave);
+    if (!phaseJson.isEmpty()) {
+        emit phaseUpdated(phaseJson);
+    }
+
+    auto coherenceJson = samplers->coherence.sampleJson(pointsPerOctave);
+    if (!coherenceJson.isEmpty()) {
+        emit coherenceUpdated(coherenceJson);
+    }
+
+    auto rtaJson = samplers->rta.sampleJson(pointsPerOctave);
+    if (!rtaJson.isEmpty()) {
+        emit rtaUpdated(rtaJson);
     }
 }
 

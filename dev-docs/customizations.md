@@ -559,3 +559,58 @@
 - 瞬間ピークが-3dBを超えた際の既存クリップ警告(`.meter-clip`、単色赤)はそのまま維持し、グラデーションより優先して表示される。
 - メーターのdBレンジ(`METER_MIN_DB`/`METER_MAX_DB`、`measurementList.ts`)は当初-60dB〜0dBだったが、線形スケールでは中心(50%)が常に最小値の半分(-30dB)になり、一般的なレベルメーターの感覚(中心付近が-24dB程度)と異なるとのフィードバックを受け、`METER_MIN_DB`を-48dBに変更した。これにより中心がちょうど-24dBになる。色分け・境界線の位置(%)もこの新しいレンジ(-30dB=37.5%、-18dB=62.5%、-6dB=87.5%)に合わせて再計算した。
 - macOS実機で、色分けとグラデーションの見た目、境界線の表示、スケール変更後の中心位置を確認した。
+
+### Phase 22完了(GeneratorパネルUIのサイズ統一・レイアウト調整)
+
+`web/src/generatorPanel.ts`、`web/src/style.css`
+
+- Generatorパネルの各コントロール(出力インターフェース選択・レベル表示・On/Offボタン・チャンネルサマリー・−/+ボタン)の高さがブラウザ既定のレンダリング差(`<select>`と`<div>`/`<button>`の内部余白の違い)でばらついていたため、`.generator-grid`にCSSカスタムプロパティ`--generator-ctrl-height`(2.3rem)を導入し、全コントロールへ明示的に適用して高さを統一した。
+- 「−」「+」ボタンをレベル表示ボックスの下(グリッド2列目)へ移動し、`.generator-level-buttons`(`display: flex`)でラップした。レベルボックスと同じグリッド列に属するため、2ボタン合計の幅が自動的にレベルボックスの幅と一致する。この変更に伴い、On/Offボタンはグリッド1行目のみで完結し(2行目3列目は空セル)、高さが他の1行目コントロールと揃う形になった。
+- On/Offボタンの表示を、OFF時は灰色ボタンに"OFF"、ON時は赤色ボタン(既存の`.generator-on`)に"ON"を表示するよう`syncFromGenerator()`でテキストを動的に切り替えるようにした(従来は常時"On"固定表示だった)。
+- Vite開発サーバー(`OSM_JS_DEV_SERVER=1`)+`QTWEBENGINE_REMOTE_DEBUGGING`でCDP接続し、Node.js組み込みWebSocketで実DOMの`getBoundingClientRect()`と`Page.captureScreenshot`を使って各コントロールの高さが揃っていること(32px均一)、−/+ボタン合計幅がレベルボックス幅と一致すること、On/Offボタンの色・テキスト切り替えを確認した。その後TypeScript/ViteとQt本体を通常ビルドし、macOS実機で最終表示を確認した。
+
+### Phase 23完了(Generatorのチャンネル選択ドロップダウンをチャートエリア基準のポップオーバー化)
+
+`web/src/generatorPanel.ts`、`web/src/style.css`
+
+- **不具合報告**: Generatorパネルの出力チャンネル選択(`<details>`の`Ch: 1, 2`)は右ペイン最下部にあり、クリックすると`position: absolute; top: 100%`でチェックボックスリストが真下に展開されるため、画面外(ウィンドウ下端の外側)にはみ出て操作不能だった。
+- 測定ソースのSettingsポップオーバー(`settingsPopover.ts`)と同様に、チャートエリア(`.pane-center`)を基準にJSで位置計算する方式へ変更した。ただしSettingsポップオーバーはチャートエリアの右上を起点に下側へ展開するのに対し、こちらは要望により**チャートエリアの右下を起点に上側へ展開**する(`positionChannelsList()`、`generatorPanel.ts`)。
+- CSSは`.generator-channels-list`を`position: absolute`から`position: fixed`(`z-index: 1000`、Settingsポップオーバーと同値)に変更し、`top`/`left`はJSが`<details>`の`toggle`イベント発火時・チャンネル一覧再描画時・ウィンドウリサイズ時に再計算して設定する。左端はSettingsポップオーバーと同じ「チャート右端 − 幅 − 16px」、上端は「チャート下端 − 16px − リスト高さ」とし、いずれもビューポート内(8px余白)にクランプする。
+- CDP経由で`<details>`の`open`プロパティを直接操作し(クリックだと開閉がトグルしてしまうため)、通常ウィンドウ幅と1000×500の縮小ウィンドウ(`Emulation.setDeviceMetricsOverride`)の両方でリストがチャートエリア右下起点で画面内に収まって展開されることを確認した。その後TypeScript/ViteとQt本体を通常ビルドし、macOS実機で最終表示を確認した。
+
+### Phase 24完了(JS版に測定信号のGlobal Smoothing設定を追加)
+
+`src/chart/jsfrontendmanager.h`、`src/chart/jsfrontendmanager.cpp`、`src/chart/databridge.h`、`src/chart/databridge.cpp`、`src/main.cpp`、`web/src/webchannel.ts`、`web/src/smoothingPanel.ts`(新規)、`web/src/main.ts`、`web/src/style.css`
+
+- QML版の`SideBar.qml`には、各測定のSmoothingを"Global"に設定した場合に参照される全体設定値(`Chart::GlobalSmoothing`、1オクターブあたりのポイント数)を選ぶコンボボックスが既にあり、これがJS版に未実装だった。`Chart::GlobalSmoothing`は`GlobalSmoothing::instance()`静的シングルトンを介して`frequencybasedplot.cpp`/`coherenceplot.cpp`/`crestfactorplot.cpp`のプロット計算処理(QML版のOpenGLチャート描画パイプライン)から直接参照されており、フロントエンドの種類に関係なく同一のバックエンド設定値が使われる。
+- `JsFrontendManager`のコンストラクタへ`Chart::GlobalSmoothing *`引数を追加し、固定WebChannelオブジェクト`globalSmoothing`として登録した(`generator`と同様、専用ブリッジは設けずQ_PROPERTY `pointsPerOctave`をqwebchannel.jsの自動バインディングでそのまま利用)。
+- Web版の右ペインに、Generatorブロックの直上へ新しい固定領域`.pane-right-smoothing`(`.pane-right-generator`と同スタイル)を追加し、`smoothingPanel.ts`でQML版と同じ6段階(1/1, 1/3, 1/6, 1/12, 1/24, 1/48 oct)の`<select>`を表示した。
+- **不具合報告(UI実装直後)**: UIの見た目・値の往復は動作するが、Smoothingを切り替えてもチャート表示に反映されなかった。原因は、JS版のデータ経路(`DataBridge`→`SeriesSampler`各クラス)がQML版のOpenGLチャート描画パイプライン(`FrequencyBasedPlot`系)を一切経由しておらず、`GlobalSmoothing`と無関係にpointsPerOctaveの引数省略時のデフォルト値(magnitude/phase/coherence/spectrogramは12、RTAは6)で固定サンプリングしていたため。
+- `DataBridge`のコンストラクタへ`Chart::GlobalSmoothing *`を追加し、`onReadyRead()`での各`sampleJson()`呼び出しに`m_globalSmoothing->pointsPerOctave()`を明示的に渡すよう変更した。さらに`GlobalSmoothing::pointsPerOctaveChanged`を購読し、値が変わった瞬間に保持中の全アクティブソースのMagnitude/Phase/Coherence/RTAを新しいpointsPerOctaveで再サンプリングして再送信する(`emitCurves()`)ことで、次のデータフレームを待たず即座にチャートへ反映されるようにした。`FrequencyBasedSeriesHelper::iterate()`はソースの現在のライブ状態を都度読み直す実装のため、readyRead()以外のタイミングで再サンプリングしても値は正しい。
+- Spectrogramのみ`emitCurves()`に含めていない。スペクトログラムは時系列に1行ずつ積み上げる表示方式のため、Smoothing変更時に無条件で再サンプリングすると本来の時間フレームではない行が追加されてしまう。そのため次のreadyRead(=新しい時間フレーム)からのみ新しいpointsPerOctaveを反映する。
+- Vite開発サーバー+CDPで、QWebChannel接続、初期値(既定の1/6 oct)の反映、選択変更が`globalSmoothing.pointsPerOctave`に反映されて往復することを確認した。データ連動については、`charts.ts`の`updateMagnitude()`へ一時的にデバッグログ(受信した`frequency`配列長)を仕込み、CDP経由でSmoothingを1/1→1/48→1/1 octと切り替えて、既存のアクティブな測定2件それぞれで配列長が実際に変化する(1/1では11点、1/48では263点)ことをコンソールログで確認した。さらにRTAチャートのスクリーンショットで、1/1 octでは滑らかな折れ線、1/48 octでは細かくギザギザした折れ線になることも視覚的に確認した。確認後デバッグログは削除し、テストで変更した値は既定値へ戻した。その後TypeScript/ViteとQt本体を通常ビルドし、macOS実機で最終表示を確認した。
+
+### Phase 25完了(JS版チャートにQML版のグリッド・目盛りルーラー表示を移植)
+
+`web/src/charts.ts`、`web/src/main.ts`
+
+- JS版のチャート(`charts.ts`)は背景の格子線のみ描画しており、QML版(`Chart::PaintedItem`/`Chart::Axis`)にあるX軸・Y軸の目盛りラベルや、パディングを確保した軸専用の余白が存在しなかった。QML側の実装(`src/chart/painteditem.h`の`padding`定数、`src/chart/axis.cpp`の`Axis::paint()`、`src/chart/palette.cpp`のdarkMode配色)を読み、その値をそのままJS版に移植した。
+- パディングを`{left:50, right:10, top:10, bottom:20}`(QML版`PaintedItem::padding`と同値)としてY軸ラベル用の左余白・X軸ラベル用の下余白を確保し、グリッド線・データ線・凡例をすべてこのパディング基準の座標系で描画するよう`charts.ts`を全面的に書き換えた。目盛りラベルの数値整形もQML版`PaintedItem::format()`(1000以上は1000で割って"K"を付与、小数第1位で丸め)と同じロジックにした。
+- X軸(周波数)は対数軸で20Hz〜20kHzに固定(QML版`FrequencyBasedPlot`の`FIXED_X_MIN`/`FIXED_X_MAX`と同値、以前から`XMIN`/`XMAX`定数として存在していたため範囲自体は変更なし)、グリッド周波数はQML版`ISO_LABELS`(31.5, 63, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz)に合わせた。従来の10分割(20, 50, 100, ...)から変更した。
+- Y軸はチャート種別ごとにQML版の既定表示レンジ・目盛り間隔をそのまま採用した: Magnitude(±12dB、3dB刻み、0dBを中心線でハイライト)、Phase(±180°、45°刻み、0°を中心線)、Coherence(0〜1、0.2刻み)、RTA(DBfsモード既定の-70dB〜0dB、10dB刻み+5dB刻みの補助グリッド線)。MagnitudeとRTAは従来データレンジに応じた自動スケーリングだったが、QML版は既定ではズーム操作をしない限りこの固定レンジで表示されるため、見た目を合わせる目的でJS版も固定レンジに変更した(JS版には現状ズームUIがないため、レンジ外のデータは切り詰められて表示される)。
+- グリッド線・中心線・文字色はQML版のdarkMode配色(`Palette::initColors()`)と同じ`rgba(255,255,255,0.157)`(通常グリッド)/`rgba(255,255,255,0.502)`(中心線)/白(文字)を使用。RTAの補助グリッド線はQML版と同じく通常グリッドの半分の不透明度にした。
+- Spectrogramは QML版の`SpectrogramPlot`が`m_x.setGridVisible(false)`としているのに合わせ、X軸(周波数)の目盛りラベルのみ描画し縦グリッド線は表示しないようにした。時間軸(Y軸、QML版では0〜4秒)は、JS版のスクロール描画が実時間を追跡していないため見送り、他チャートと同じ左右パディングのみ揃えて見た目の一貫性を保った。行のシフト処理(`getImageData`/`putImageData`)は軸ラベル用の余白を除いたプロット領域のみを対象にするよう変更した。
+- 凡例(ソース名と色のスウォッチ)は左側のY軸ラベル欄と重ならないよう、プロット領域内(パディング基準)の左上に位置を移動した。
+- リサイズ時・初期表示時にキャッシュ済みデータ(なければ軸のみ)を再描画する`charts.redrawAll()`を追加し、`main.ts`の`resizeAll()`から呼ぶようにした。これにより、データが届く前でも軸とグリッドが常に表示された状態になる(QML版はデータの有無に関わらず常に軸を描画する)。
+- macOS実機でMagnitude/RTA/Spectrogram/Phaseの各チャートを表示し、目盛りラベルの値・位置(31.5〜16Kの周波数ラベル、Magnitudeの-12〜12dB、RTAの-70〜0dBとその中間の補助線、Phaseの180〜45°)、0dB/0°の中心線ハイライト、Spectrogramの縦グリッド線なし+周波数ラベルのみの表示、凡例とY軸ラベルが重ならないことをスクリーンショットで確認した。
+
+### Phase 26完了(Spectrogramのスクロール方向をQML版に合わせ、Lower/Upperしきい値スライダーを移植)
+
+`web/src/charts.ts`、`web/src/main.ts`、`web/src/style.css`、`web/src/spectrogramThresholds.ts`(新規)
+
+- **不具合報告1**: Phase 25でSpectrogramに軸ルーラーを追加したが、データが流れる方向がQML版と逆だった(JS版は新しい行を上端に描画し既存行を下へ押し出していた)。QML版のレンダラー(`src/chart/opengl/spectrogramseriesrenderer.cpp`の`updateMatrix()`、`m_matrix.ortho(0, 1, m_yMax, m_yMin, -1, 1)`)を確認すると、時間軸(`m_yMin=0`が現在、`m_yMax=4`が4秒前)は`ortho`のbottom引数に`m_yMax`(4=過去)、top引数に`m_yMin`(0=現在)を渡しており、結果として新しいデータは画面下端に描画され、時間経過とともに上へスクロールしていく。これに合わせ、`updateSpectrogramRow()`のイメージシフト方向を反転した(`getImageData`でプロット領域の上側を取得し`padTop`へ貼り直すことで全体を上へシフトし、新しい行はプロット領域の下端(`padTop + plotH - rowHeight`)に描画する)。
+- **不具合報告2**: QML版の`qml/Plot/SpectrogramThresholds.qml`(Lower/Upperしきい値を操作する縦グラデーションバー+ドラッグハンドルUI)がJS版に未移植だった。新規`web/src/spectrogramThresholds.ts`にQML版と同じロジック(dB範囲-80〜0、しきい値間の最小ギャップ3dB、`posOf()`/`valueToY()`/`yToValue()`によるバー上の位置⇔dB値の相互変換、3等分した区間を青→緑→黄→赤にグラデーションする配色)を移植した。配色(`#2196F3`/`#8BC34A`/`#FFEB3B`/`#F44336`)は元々`charts.ts`の`spectrogramColor()`が使っていた値と同一(QML版`spectrogramseriesrenderer.cpp`の配色と一致)だったため変更なし。しきい値は`charts.ts`側を`SPEC_LOWER`/`SPEC_UPPER`の定数から可変の`spectrogramLower`/`spectrogramUpper`(既定値はQML版`SpectrogramPlot`の`DEFAULT_DB_LOWER`/`DEFAULT_DB_UPPER`と同じ-70/-10)に変更し、`setSpectrogramThresholds()`で更新できるようにした。しきい値の変更は新しく描画される行にのみ反映され、すでに描画済みの行は再着色しない(QML版のレンダラーも新規収集時にのみ`m_lower`/`m_upper`を評価しており同じ挙動)。
+- Spectrogramチャートを`.chart-spectrogram-wrap`(`position: relative`)で囲み、しきい値バーを`.spectrogram-thresholds`として絶対配置のオーバーレイで重ねた。QML版は`x: 4`にバーを配置しており(`SpectrogramThresholds.qml`)、JS版もパディング左端(周波数軸は現状表示していないため空いている領域)に合わせて`left: 4px`に配置した。ドラッグはPointer Events(`pointerdown`+`setPointerCapture`)で実装し、ハンドルは`▲`(Lower、青)/`▼`(Upper、赤)。
+- **不具合報告3(ユーザーからの追加報告)**: しきい値ハンドルがドラッグできず、実機で確認するとハンドルやグラデーションバーが本来の位置(チャート右上のY軸ラベル欄付近)ではなくチャート下の別の場所に表示されていた。CDP(`QTWEBENGINE_REMOTE_DEBUGGING`)で実DOMの`getBoundingClientRect()`/`getComputedStyle()`を調べたところ、オーバーレイ用の`.spectrogram-thresholds { position:absolute; top:0; right:0; bottom:0; left:0; }`が実際には高さ0×幅0にしかならず、`position:absolute`要素が(top/left指定があるにもかかわらず)通常フロー上の静的位置(=`.chart-spectrogram-wrap`直後、Spectrogramチャートの下)にフォールバックしていた。原因は、Viteのビルド時CSS圧縮(esbuild)が`top/right/bottom/left: 0`をまとめて`inset: 0`ショートハンドに自動変換しており、Qt 5.15.2同梱の(比較的古い)QtWebEngineのChromiumが`inset`プロパティ自体を解釈できず、そのCSS宣言をまるごと無視していたため。`document.styleSheets`から実際に配信されているCSSルールをCDPで確認して特定した。対策として`top/left`+`width:100%; height:100%`という、`inset`へ圧縮されない書き方に変更した。この問題は他のCSSでも起こりうる(4辺すべてを0または同一値で指定するコードは要注意)ため、教訓として記録しておく。
+- CDPで実際に`pointerdown`→`pointermove`→`pointerup`イベントをハンドル要素へディスパッチし、ラベルのテキストが追従して更新されること(ドラッグが実際に機能すること)を確認した。さらにLower/Upperの現在値を常時表示するラベル(`.spectrogram-thresholds-label`)をハンドル脇に追加した(QML版はToolTip実装でホバー時のみ表示だったが、常時表示の方が値を把握しやすいとのユーザー要望のため変更)。
+- Generatorをオン/オフして実機のSpectrogramを数秒間隔でスクリーンショット比較し、新しいデータが下端に現れ、既存の模様が時間経過とともに上へ移動する(QML版と同じ方向)ことを視覚的に確認した。しきい値バーの見た目(赤→黄→緑→青のグラデーション、ハンドル位置、ラベル表示)も実機で確認した。
