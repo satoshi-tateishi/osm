@@ -92,6 +92,7 @@ export function renderSourceTree(container: HTMLElement, items: TreeItem[], call
     input.className = 'tree-name-edit'
     input.value = item.name
     nameSpan.replaceWith(input)
+    row.draggable = false
     input.focus()
     input.select()
 
@@ -102,6 +103,7 @@ export function renderSourceTree(container: HTMLElement, items: TreeItem[], call
       }
       settled = true
       input.replaceWith(nameSpan!)
+      row.draggable = true
     }
     function commit() {
       if (settled) {
