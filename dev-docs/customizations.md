@@ -490,3 +490,11 @@
 - 右ペインを「Transfer Function + Settingsのスクロール領域」と「Generatorの固定領域」に分離し、右ペイン自体を縦方向のflexコンテナに変更した。内容が増えてもGeneratorをTransfer Function/Settingsのスクロールに巻き込まず、ウィンドウ右下に常時表示するための変更である。
 - 上側領域は`flex: 1 1 auto`、`min-height: 0`、`overflow-y: auto`、Generator領域は`flex: 0 0 auto`とした。`.pane-right`で既存の`.pane`のoverflowとpaddingを上書きし、それぞれの子領域へpaddingを移したため、左・中央ペインのレイアウトは変更していない。
 - 通常サイズと縮小サイズでGeneratorが右下に留まること、測定4件のTransfer Function表示、Session Data、チャート更新、Generatorの従来の各コントロール表示とQWebChannel接続が維持されることをmacOS実機で確認した。
+
+### Phase 15完了(M/Rレベルメーターの数値表示廃止と間隔調整)
+
+`web/src/measurementList.ts`、`web/src/style.css`
+
+- Transfer Functionの各測定行で、M/Rバー右側にあったリアルタイムdB数値を廃止した。複数の測定を並べたときの視覚的な情報量を減らし、レベルの概要はバーで素早く把握できる表示にするためである。数値DOMとその更新処理のみを削除し、バー幅のレベル連動とクリップ時の赤色表示は維持した。
+- M/R行を`.meter-group`にまとめ、グループ内の間隔を0.1remに設定した。測定ヘッダーからメーターまでの間隔0.25remは維持し、M/Rを一つのメーターユニットとして判別しやすくした。Settingsセクションの`Level`/`Ref`/`Peak`数値表示は別用途のため変更していない。
+- TypeScript/ViteとQt本体のビルド後、macOS実機で測定4件を表示し、数値の消失、M/R間隔、入力に連動するバー伸縮、他ペインとGenerator配置の維持を確認した。

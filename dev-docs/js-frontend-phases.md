@@ -25,6 +25,7 @@ Phase 0〜13が完了し、5チャート、トップレベルの複数Measuremen
 | Phase 12 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 完了 |
 | Phase 13 | JS版をデフォルトUIへ昇格 + QML版の扱い | 完了 |
 | Phase 14 | Generatorパネルをウィンドウ右下に固定表示 | 完了 |
+| Phase 15 | M/Rレベルメーターの数値表示廃止 + 間隔詰め | 完了 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
 
@@ -472,3 +473,22 @@ public:
 **明示的にスコープ外とする項目**: Generatorパネル自体の中身(信号発生器の機能)の変更は行わない。あくまで配置(レイアウト)の変更のみ。
 
 **完了メモ(2026-08-09)**: 右ペインのDOMを、Transfer Function + Settingsを含む`.pane-right-scroll`と、Generatorを含む`.pane-right-generator`に分離した。`.pane-right`を縦方向のflexコンテナにし、上側だけを`overflow-y: auto`、下側を`flex: 0 0 auto`とした。上側には`min-height: 0`も指定し、内容が多い場合にflex要素が縮まずGeneratorを押し出すことを防いだ。`npm run build`とQt 5.15.2 x64/OpenGLのシャドウビルドが成功した。測定4件の状態で通常サイズ(1440×875)と縮小サイズ(1000×600)を実機確認し、Transfer Function/Settingsの表示領域が縮まってもGeneratorは右下に留まり、左・中央ペインのレイアウトとチャート更新に影響がないことを確認した。Generatorは従来のデバイス、レベル、On/Off、チャンネル選択の表示とQWebChannel接続を維持しており、機能ロジックには変更を加えていない。
+
+---
+
+## Phase 15: M/Rレベルメーターの数値表示廃止 + 間隔詰め
+
+**目的**: 右ペインTransfer Function内、各測定行のM/Rレベルメーターについて、バー右の数値テキスト表示(リアルタイムdB値)を廃止しバー表示のみにする。あわせてM行・R行の間隔を詰めて一つのメーターユニットとして見えるようにする。
+
+**対象ファイル**: `web/src/measurementList.ts`(M/R行のDOM構造・更新処理)、`web/src/style.css`(レイアウト)
+
+**タスク**:
+- [x] `.meter-text`(数値テキスト)をM/R行から削除し、バー(`.meter-bar`/`.meter-fill`)のみ残す
+- [x] M行・R行を`.meter-group`でまとめ、間隔をヘッダー〜M行間より詰める
+- [x] 動作確認・完了メモを本ファイルに追記
+
+**依存Phase**: Phase 14完了後
+
+**明示的にスコープ外とする項目**: Settingsセクションの`#settings-meter`(Level/Ref/Peakのテキスト表示)は対象外、変更しない。
+
+**完了メモ(2026-08-09)**: 各測定行のM/Rメーターを`.meter-group`でまとめ、グループ内の間隔を0.1remにした。バー右側の`.meter-text`と`data-meter-text`、および数値更新処理を削除したが、バー幅のレベル連動と`peak > -3`のクリップ判定は維持した。Settingsの`#settings-meter`と`renderMeter`は変更していない。`npm run build`とQt 5.15.2 x64/OpenGLのシャドウビルドが成功した。macOS実機で測定4件の表示を確認し、M/Rの数値が表示されずバーだけになること、M/R間がヘッダー〜M間より狭いこと、入力レベルに応じてMバーが伸縮すること、他ペインとGeneratorの配置に退行がないことを確認した。

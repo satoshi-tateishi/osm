@@ -32,15 +32,15 @@ export function renderMeasurementList(container: HTMLElement, items: Measurement
           <span class="tree-swatch" style="background:${item.color}"></span>
           <span class="measurement-name${item.active ? '' : ' tree-inactive'}">${escapeHtml(item.name)}</span>
         </div>
-        <div class="meter-line">
-          <span class="meter-label">M</span>
-          <div class="meter-bar"><div class="meter-fill" data-meter-fill="measurement"></div></div>
-          <span class="meter-text" data-meter-text="measurement">—</span>
-        </div>
-        <div class="meter-line">
-          <span class="meter-label">R</span>
-          <div class="meter-bar"><div class="meter-fill" data-meter-fill="reference"></div></div>
-          <span class="meter-text" data-meter-text="reference">—</span>
+        <div class="meter-group">
+          <div class="meter-line">
+            <span class="meter-label">M</span>
+            <div class="meter-bar"><div class="meter-fill" data-meter-fill="measurement"></div></div>
+          </div>
+          <div class="meter-line">
+            <span class="meter-label">R</span>
+            <div class="meter-bar"><div class="meter-fill" data-meter-fill="reference"></div></div>
+          </div>
         </div>
       </div>
     `).join('')
@@ -82,17 +82,14 @@ export function updateMeasurementMeter(container: HTMLElement, uuid: string, val
 
 function updateMeterLine(row: HTMLElement, kind: 'measurement' | 'reference', level: number | null, peak: number | null) {
   const fill = row.querySelector<HTMLElement>(`[data-meter-fill="${kind}"]`)
-  const text = row.querySelector<HTMLElement>(`[data-meter-text="${kind}"]`)
   if (typeof level === 'number' && Number.isFinite(level)) {
     const ratio = Math.min(1, Math.max(0, (level - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB)))
     if (fill) {
       fill.style.width = `${ratio * 100}%`
       fill.classList.toggle('meter-clip', typeof peak === 'number' && peak > -3)
     }
-    if (text) text.textContent = `${level.toFixed(1)} dB`
   } else {
     if (fill) fill.style.width = '0%'
-    if (text) text.textContent = '—'
   }
 }
 

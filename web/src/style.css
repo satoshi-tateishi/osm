@@ -251,6 +251,12 @@ body {
   white-space: nowrap;
 }
 
+.meter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
 .meter-line {
   display: flex;
   align-items: center;
@@ -282,15 +288,6 @@ body {
 
 .meter-fill.meter-clip {
   background: #f44336;
-}
-
-.meter-text {
-  flex: 0 0 auto;
-  width: 3.5rem;
-  text-align: right;
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.7);
 }
 
 .chart {
