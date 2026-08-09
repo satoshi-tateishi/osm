@@ -1,25 +1,148 @@
-# 実装プロンプト: フロントエンドJS化 Phase 12(左ペインの操作: 追加/Store/移動/削除)
+# 修正プロンプト: データ名の編集導線 + 重複禁止 + Group非表示時の配下名グレー表示
 
-このファイルは[js-frontend-phases.md](js-frontend-phases.md) Phase 12を実装するための指示書。Phase 11(グループのツリー再帰対応、Stored専用)は完了・実機確認(CDP経由での実際のGroup作成・Stored移動・インデント表示確認含む)済み。
+Phase 12(左ペインDnD移動 + 挿入位置バー表示 + 階層的な表示/非表示)はレビュー済み・動作確認済み(CDPでのGroup内へのドラッグ、並び替え、チェックボックスのマスク表示を実機確認)。ユーザーから3件のフィードバックがあったため、まとめて対応する。
 
-## Phase 11完了時点の状態(前提)
+## フィードバック内容
 
-- 左ペイン「Session Data」は読み取り専用(アクティブ切替チェックボックスのみ)。Group作成・アイテムの移動・削除は現状QML側からしかできない。
-- 右ペイン「Transfer Function」も一覧表示のみで、新規Measurementの追加ボタンは無い。
-- `SourceList`は`sourceList`という固定チャンネルオブジェクトとしてQWebChannelに直接登録済み(Phase 6)。以下のQ_INVOKABLEがJSから直接呼べる: `addGroup()`、`addMeasurement()`、`moveItem(QUuid itemId, QUuid targetGroupId)`、`removeItem(QUuid uuid, bool deleteItem = true)`(`src/sourcelist.h:86,138,143,149`)。
-- `moveItem`の`targetGroupId`は**空文字列を渡すとnull QUuidとして解釈され「トップレベルへ移動」を意味する**(`sourcelist.cpp:295-303`の`targetGroupId.isNull()`分岐)。
-- `SourceTreeBridge::storeItem(QString uuid)`は既にPhase 6で実装済み(`Shared::Source`引数の`SourceList::storeItem`をuuid経由で呼ぶラッパー)。**Measurementのスナップショット保存は既にPhase 8のSettingsパネルの「Store」ボタンで実現済みのため、本Phaseでは重複実装しない**。
-- Phase 11でユーザーから明示された方針により、**グループ化はStored/Session Data側のみ**(測定ソースは4〜8個程度で増えないためグループ化不要、`SourceList::isGroupableData()`が既にMeasurementのグループ化を禁止している)。したがって本Phaseの「移動」機能は左ペインのみに実装し、右ペイン(Transfer Function)には移動機能を追加しない。
+> データ名の編集や削除の導線がないです。データ名の重複は認めないようにしたい。(複製時に重複した場合は末尾に"_copy-N"を自動でつける)、データ名を編集した時、重複した名前が存在する場合は"同じ名前では保存できません"などのダイアログを出して、再入力を促す等。
+>
+> GroupのチェックをOFFにしたとき、配下のデータ名もグレーにしたい。
 
-## Phase 12のスコープ
+(削除の導線自体はPhase 12で「×」ボタンとして既に実装済み。不足しているのは**名前編集の導線**と**重複防止**。)
 
-1. 左ペイン「Session Data」: 上部に「+ Group」ボタンを追加。各行に「移動」(クリックでグループ一覧が現れ、選択すると即座に`moveItem`)と「削除」ボタンを追加。
-2. 右ペイン「Transfer Function」: 上部に「+ Measurement」ボタンを追加(新規ライブ測定ソースの追加)。
-3. ドラッグ&ドロップは今回のスコープ外(ボタン操作のみ)。
+## 設計方針
 
-## 実装1: `web/src/sourceTree.ts`を全面置き換え
+- **手動リネーム時の重複チェック**: 左ペインのツリーはJS側で既にツリー全体(全階層)の配列を保持しているため、**JS側でクライアントサイドの重複チェック**を行い、重複していれば`alert()`で通知して変更を確定しない(再度ダブルクリック/編集アイコンで入力し直せる)。バックエンド(`SourceTreeBridge::setName`)側でも**同じ階層の兄弟間**で防御的に重複チェックし、`bool`の成否をコールバックで返す(JS側のチェックをすり抜けた場合の保険。二重チェックだが軽量なので問題ない)。
+- **自動生成名(Store/複製)の重複回避**: `SourceList::appendItem()`(`storeItem`/`cloneItem`含む全ての追加経路が最終的に通る一元的な入り口)に、追加直前の名前重複チェック+`_copy-N`自動付与を追加する。**スコープは追加先と同じリスト内の兄弟のみ**(Group内の`SourceList`はルートとは独立したインスタンスのため、ツリー全体を横断した重複チェックをこの1箇所で行うには親リストへの参照が必要になり大掛かりになる。現実的な衝突パターン=同一階層での連続Store/複製、をカバーすれば十分と判断)。
+- **Group非表示時の配下名グレー表示**: 前回のプロンプトで用意した`isMaskedByAncestor`をチェックボックスだけでなくデータ名の`<span>`にも適用する。
 
-Phase 10の出力ポート選択(`<details>`/`<summary>`)と同じ軽量ドロップダウンパターンを、行ごとの「移動先」メニューに流用する。グループ一覧は`items`配列(既にPhase 11で`depth`付き・再帰済み)から`type === "Group"`で抽出するだけでよく、追加の非同期呼び出しは不要。
+## 実装1: `src/sourcelist.h`の変更
+
+```cpp
+private:
+    // ...(既存のprivateメンバの近くに追加)
+    QString uniqueName(const QString &baseName) const noexcept;
+```
+
+## 実装2: `src/sourcelist.cpp`の変更
+
+`appendItem`の直前に重複チェック+リネームを追加:
+
+```cpp
+void SourceList::appendItem(const Shared::Source &item, bool autocolor)
+{
+    if (!item || getByUUid(item->uuid())) {
+        return;
+    }
+    auto guard = lock();
+    emit preItemAppended();
+
+    if (autocolor) {
+        item->setColor(nextColor());
+    }
+    item->setName(uniqueName(item->name()));
+    m_items.append(item);
+    emit postItemAppended(item);
+    emit countChanged();
+}
+
+QString SourceList::uniqueName(const QString &baseName) const noexcept
+{
+    QString candidate = baseName;
+    int suffix = 1;
+    bool collided;
+    do {
+        collided = false;
+        for (const auto &existing : m_items) {
+            if (existing && existing->name() == candidate) {
+                collided = true;
+                break;
+            }
+        }
+        if (collided) {
+            candidate = QStringLiteral("%1_copy-%2").arg(baseName).arg(++suffix);
+        }
+    } while (collided);
+    return candidate;
+}
+```
+
+**注意**: これは`appendItem`を通る**全ての**追加(Measurement/Group/Stored/複製/Store/セッション読み込み時の`fromJSON`)に一律で適用される。既存セッションファイルに同名アイテムが含まれていた場合、読み込み時に自動でリネームされる点をユーザーに伝えること(実害はないが挙動として明記が必要)。
+
+## 実装3: `src/chart/sourcetreebridge.h`の変更
+
+```cpp
+public:
+    // ...(既存のQ_INVOKABLEの並びに追加)
+    Q_INVOKABLE bool setName(const QString &uuid, const QString &name);
+```
+
+## 実装4: `src/chart/sourcetreebridge.cpp`の変更
+
+```cpp
+bool SourceTreeBridge::setName(const QString &uuidString, const QString &name)
+{
+    auto trimmed = name.trimmed();
+    if (trimmed.isEmpty()) {
+        return false;
+    }
+
+    auto uuid = QUuid(uuidString);
+    auto source = m_sourceList->getByUUid(uuid);
+    if (!source) {
+        return false;
+    }
+    if (trimmed == source->name()) {
+        return true; // 変更なし
+    }
+
+    // 同じ階層の兄弟内で重複していないか確認(自分自身は除外)。JS側の全階層チェックの保険。
+    auto parentSource = m_sourceList->getByUUid(source->parent() ? QUuid() : QUuid()); // 未使用(下記siblingsで代替)
+    Q_UNUSED(parentSource);
+
+    bool duplicate = false;
+    std::function<void(SourceList *)> checkSiblings = [&](SourceList *list) {
+        for (const auto &sibling : list->items()) {
+            if (sibling && sibling->uuid() != uuid && sibling->name() == trimmed) {
+                duplicate = true;
+                return;
+            }
+        }
+    };
+
+    // uuidが属しているリストを特定するため、ツリー全体を辿って親リストを探す
+    std::function<SourceList *(SourceList *)> findOwningList = [&](SourceList * list) -> SourceList * {
+        for (const auto &candidate : list->items()) {
+            if (candidate && candidate->uuid() == uuid) {
+                return list;
+            }
+            if (auto *group = dynamic_cast<Source::Group *>(candidate.get())) {
+                if (auto *found = findOwningList(group->sourceList())) {
+                    return found;
+                }
+            }
+        }
+        return nullptr;
+    };
+
+    if (auto *owningList = findOwningList(m_sourceList)) {
+        checkSiblings(owningList);
+    }
+
+    if (duplicate) {
+        return false;
+    }
+
+    source->setName(trimmed);
+    return true;
+}
+```
+
+**上記コードの`parentSource`の行は不要な残骸なので削除すること(実装時のコピペミス防止のための注記)。** 実際に必要なのは`findOwningList`で対象アイテムが属する`SourceList`を特定し、`checkSiblings`でその兄弟内の重複だけを見る、という2つの関数だけ。`#include <functional>`を追加すること。
+
+## 実装5: `web/src/sourceTree.ts`を全面置き換え
+
+リネームUI(編集アイコン+ダブルクリック)、送信失敗時のアラート、Group非表示時の配下名グレー表示をまとめて反映する:
 
 ```ts
 export interface TreeItem {
@@ -34,9 +157,10 @@ export interface TreeItem {
 
 export interface TreeCallbacks {
   onToggleActive: (uuid: string, active: boolean) => void
-  onMove: (uuid: string, targetGroupUuid: string) => void // 空文字列 = トップレベルへ移動
+  onMove: (uuid: string, targetParentUuid: string, index: number) => void
   onDelete: (uuid: string) => void
   onAddGroup: () => void
+  onRename: (uuid: string, name: string) => void
 }
 
 const TYPE_ICON: Record<string, string> = {
@@ -45,59 +169,207 @@ const TYPE_ICON: Record<string, string> = {
   Group: '\u{1F4C1}',
 }
 
+function isMaskedByAncestor(item: TreeItem, byUuid: Map<string, TreeItem>): boolean {
+  let parent = item.parentUuid ? byUuid.get(item.parentUuid) : undefined
+  while (parent) {
+    if (!parent.active) {
+      return true
+    }
+    parent = parent.parentUuid ? byUuid.get(parent.parentUuid) : undefined
+  }
+  return false
+}
+
 export function renderSourceTree(container: HTMLElement, items: TreeItem[], callbacks: TreeCallbacks) {
-  const groups = items.filter((item) => item.type === 'Group')
+  const byUuid = new Map(items.map((item) => [item.uuid, item]))
+
+  function siblingsOf(parentUuid: string | null): TreeItem[] {
+    return items.filter((item) => item.parentUuid === parentUuid)
+  }
+  function localIndex(item: TreeItem): number {
+    return siblingsOf(item.parentUuid).findIndex((sibling) => sibling.uuid === item.uuid)
+  }
 
   const rowsHtml = items.length
-    ? items.map((item) => `
-      <div class="tree-row" data-uuid="${item.uuid}" style="padding-left: ${(item.depth * 1).toFixed(1)}rem">
-        <input type="checkbox" class="tree-active" ${item.active ? 'checked' : ''} />
+    ? items.map((item) => {
+        const masked = isMaskedByAncestor(item, byUuid)
+        return `
+      <div class="tree-row" draggable="true" data-uuid="${item.uuid}" data-type="${item.type}" data-parent="${item.parentUuid ?? ''}" style="padding-left: ${(item.depth * 1).toFixed(1)}rem">
+        <input type="checkbox" class="tree-active${masked ? ' tree-checkbox-masked' : ''}" ${item.active ? 'checked' : ''} />
         <span class="tree-swatch" style="background:${item.color}"></span>
         <span class="tree-icon">${TYPE_ICON[item.type] ?? '•'}</span>
-        <span class="tree-name${item.active ? '' : ' tree-inactive'}">${escapeHtml(item.name)}</span>
-        <details class="tree-move">
-          <summary title="Move to...">&#8677;</summary>
-          <div class="tree-move-list">
-            <button type="button" data-target-group="">Top level</button>
-            ${groups.filter((group) => group.uuid !== item.uuid).map((group) =>
-              `<button type="button" data-target-group="${group.uuid}">${escapeHtml(group.name)}</button>`
-            ).join('')}
-          </div>
-        </details>
+        <span class="tree-name${item.active ? '' : ' tree-inactive'}${masked ? ' tree-name-masked' : ''}" data-name>${escapeHtml(item.name)}</span>
+        <button type="button" class="tree-rename" title="Rename" data-rename>&#9998;</button>
         <button type="button" class="tree-delete" title="Delete" data-delete>&times;</button>
       </div>
-    `).join('')
+    `
+      }).join('')
     : '<p class="placeholder">保存データがありません</p>'
 
   container.innerHTML = `
     <div class="tree-toolbar">
       <button type="button" data-add-group>+ Group</button>
     </div>
-    ${rowsHtml}
+    <div class="tree-list" data-tree-list>${rowsHtml}</div>
+    <div class="tree-drop-root" data-drop-root>ここへドロップでトップレベルへ移動</div>
   `
 
   container.querySelector('[data-add-group]')?.addEventListener('click', () => callbacks.onAddGroup())
 
-  container.querySelectorAll<HTMLInputElement>('.tree-active').forEach((checkbox) => {
-    checkbox.addEventListener('change', () => {
-      const uuid = checkbox.closest<HTMLElement>('.tree-row')!.dataset.uuid!
-      callbacks.onToggleActive(uuid, checkbox.checked)
+  const listEl = container.querySelector<HTMLElement>('[data-tree-list]')!
+  const dropBar = document.createElement('div')
+  dropBar.className = 'tree-drop-bar'
+  dropBar.hidden = true
+  listEl.appendChild(dropBar)
+
+  let pendingDrop: { targetParentUuid: string; index: number } | null = null
+
+  function clearDropIndicators() {
+    dropBar.hidden = true
+    listEl.querySelectorAll('.tree-drop-target').forEach((element) => element.classList.remove('tree-drop-target'))
+  }
+
+  function startRename(row: HTMLElement, item: TreeItem) {
+    const nameSpan = row.querySelector<HTMLElement>('[data-name]')
+    if (!nameSpan) {
+      return
+    }
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'tree-name-edit'
+    input.value = item.name
+    nameSpan.replaceWith(input)
+    input.focus()
+    input.select()
+
+    let settled = false
+    function restore() {
+      if (settled) {
+        return
+      }
+      settled = true
+      input.replaceWith(nameSpan!)
+    }
+    function commit() {
+      if (settled) {
+        return
+      }
+      const newName = input.value.trim()
+      restore()
+      if (!newName || newName === item.name) {
+        return
+      }
+      // 重複チェックはツリー全体(items配列)に対してJS側で先に行う。
+      // 重複していればアラートを出して送信しない(再度ダブルクリック/編集アイコンで入力し直せる)。
+      const duplicate = items.some((other) => other.uuid !== item.uuid && other.name === newName)
+      if (duplicate) {
+        alert('同じ名前では保存できません')
+        return
+      }
+      callbacks.onRename(item.uuid, newName)
+    }
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        commit()
+      } else if (event.key === 'Escape') {
+        restore()
+      }
     })
-  })
+    input.addEventListener('blur', commit)
+  }
 
   container.querySelectorAll<HTMLElement>('.tree-row').forEach((row) => {
     const uuid = row.dataset.uuid!
-    row.querySelectorAll<HTMLButtonElement>('[data-target-group]').forEach((button) => {
-      button.addEventListener('click', () => {
-        callbacks.onMove(uuid, button.dataset.targetGroup ?? '')
-        row.querySelector('details')?.removeAttribute('open')
-      })
+    const item = byUuid.get(uuid)!
+    const isGroup = item.type === 'Group'
+
+    row.querySelector<HTMLInputElement>('.tree-active')?.addEventListener('change', (event) => {
+      callbacks.onToggleActive(uuid, (event.target as HTMLInputElement).checked)
     })
     row.querySelector('[data-delete]')?.addEventListener('click', () => {
       if (confirm('このアイテムを削除しますか?')) {
         callbacks.onDelete(uuid)
       }
     })
+    row.querySelector('[data-rename]')?.addEventListener('click', () => startRename(row, item))
+    row.querySelector('[data-name]')?.addEventListener('dblclick', () => startRename(row, item))
+
+    row.addEventListener('dragstart', (event) => {
+      event.dataTransfer?.setData('text/plain', uuid)
+      event.dataTransfer!.effectAllowed = 'move'
+      row.classList.add('dragging')
+    })
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging')
+      clearDropIndicators()
+      pendingDrop = null
+    })
+
+    row.addEventListener('dragover', (event) => {
+      event.preventDefault()
+      const draggedUuid = event.dataTransfer?.getData('text/plain')
+      if (draggedUuid === uuid) {
+        return
+      }
+
+      const rect = row.getBoundingClientRect()
+      const offsetRatio = (event.clientY - rect.top) / rect.height
+      const zone: 'before' | 'after' | 'into' =
+        isGroup && offsetRatio > 0.25 && offsetRatio < 0.75
+          ? 'into'
+          : offsetRatio < 0.5 ? 'before' : 'after'
+
+      clearDropIndicators()
+
+      if (zone === 'into') {
+        row.classList.add('tree-drop-target')
+        pendingDrop = { targetParentUuid: uuid, index: siblingsOf(uuid).length }
+      } else {
+        const listRect = listEl.getBoundingClientRect()
+        const barTop = (zone === 'before' ? rect.top : rect.bottom) - listRect.top
+        dropBar.style.top = `${barTop}px`
+        dropBar.style.left = `${item.depth * 1}rem`
+        dropBar.hidden = false
+        const targetParentUuid = item.parentUuid ?? ''
+        const index = localIndex(item) + (zone === 'after' ? 1 : 0)
+        pendingDrop = { targetParentUuid, index }
+      }
+    })
+
+    row.addEventListener('drop', (event) => {
+      event.preventDefault()
+      const draggedUuid = event.dataTransfer?.getData('text/plain')
+      clearDropIndicators()
+      if (draggedUuid && pendingDrop && draggedUuid !== uuid) {
+        callbacks.onMove(draggedUuid, pendingDrop.targetParentUuid, pendingDrop.index)
+      }
+      pendingDrop = null
+    })
+  })
+
+  const dropRoot = container.querySelector<HTMLElement>('[data-drop-root]')!
+  dropRoot.addEventListener('dragover', (event) => {
+    event.preventDefault()
+    clearDropIndicators()
+    dropRoot.classList.add('tree-drop-target')
+    pendingDrop = { targetParentUuid: '', index: siblingsOf(null).length }
+  })
+  dropRoot.addEventListener('dragleave', (event) => {
+    if (!dropRoot.contains(event.relatedTarget as Node | null)) {
+      dropRoot.classList.remove('tree-drop-target')
+      pendingDrop = null
+    }
+  })
+  dropRoot.addEventListener('drop', (event) => {
+    event.preventDefault()
+    const draggedUuid = event.dataTransfer?.getData('text/plain')
+    clearDropIndicators()
+    dropRoot.classList.remove('tree-drop-target')
+    if (draggedUuid && pendingDrop) {
+      callbacks.onMove(draggedUuid, pendingDrop.targetParentUuid, pendingDrop.index)
+    }
+    pendingDrop = null
   })
 }
 
@@ -108,151 +380,86 @@ function escapeHtml(text: string): string {
 }
 ```
 
-## 実装2: `web/src/measurementList.ts`の変更(「+ Measurement」ボタン追加)
+## 実装6: `web/src/main.ts`の変更
 
-```ts
-export interface MeasurementCallbacks {
-  onToggleActive: (uuid: string, active: boolean) => void
-  onSelect: (uuid: string) => void
-  onAddMeasurement: () => void // 追加
-}
-```
+`renderSourceTree`の呼び出しに`onRename`を追加(`setName`のコールバックで失敗時にアラートを出す):
 
-`renderMeasurementList`のテンプレートの先頭にツールバーを追加:
-
-```ts
-export function renderMeasurementList(container: HTMLElement, items: MeasurementItem[], callbacks: MeasurementCallbacks) {
-  const rowsHtml = items.length
-    ? items.map((item) => ` ... (既存のまま) `).join('')
-    : '<p class="placeholder">測定ソースがありません</p>'
-
-  container.innerHTML = `
-    <div class="tree-toolbar">
-      <button type="button" data-add-measurement>+ Measurement</button>
-    </div>
-    ${rowsHtml}
-  `
-
-  container.querySelector('[data-add-measurement]')?.addEventListener('click', () => callbacks.onAddMeasurement())
-
-  // ...(以降、既存のcheckbox/rowイベント配線はそのまま)
-}
-```
-
-## 実装3: `web/src/main.ts`の変更
-
-1. `channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, sourceList }) => { ... })`のように`sourceList`を分割代入に追加する。
-2. `renderSourceTree`の呼び出しに`onMove`/`onDelete`/`onAddGroup`コールバックを追加:
 ```ts
 renderSourceTree(sourceTreeEl, sessionItems, {
   onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
-  onMove: (uuid, targetGroupUuid) => sourceList.moveItem(uuid, targetGroupUuid),
+  onMove: (uuid, targetParentUuid, index) => sourceTree.moveToPosition(uuid, targetParentUuid, index),
   onDelete: (uuid) => sourceList.removeItem(uuid, true),
   onAddGroup: () => sourceList.addGroup(),
-})
-```
-3. `renderMeasurementList`の呼び出しに`onAddMeasurement`コールバックを追加:
-```ts
-renderMeasurementList(measurementListEl, measurementItems, {
-  onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
-  onSelect: (uuid) => {
-    charts.setSpectrogramSource(uuid, canvases.spectrogram)
-    settings.selectSource(uuid)
+  onRename: (uuid, name) => {
+    sourceTree.setName(uuid, name, (success: boolean) => {
+      if (!success) {
+        alert('同じ名前では保存できません')
+      }
+    })
   },
-  onAddMeasurement: () => sourceList.addMeasurement(),
 })
 ```
 
-## 実装4: `web/src/style.css`の追加分
+## 実装7: `web/src/style.css`の追加分
 
 ```css
-.tree-toolbar {
-  margin-bottom: 0.5rem;
-}
-.tree-toolbar button {
-  background: #222;
-  color: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  padding: 0.3rem 0.6rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.tree-toolbar button:hover {
-  background: #333;
+.tree-name-masked {
+  opacity: 0.35;
 }
 
-.tree-move {
-  margin-left: auto;
-  position: relative;
-}
-.tree-move summary {
-  list-style: none;
-  cursor: pointer;
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.5);
-  padding: 0.1rem 0.3rem;
-}
-.tree-move summary::-webkit-details-marker {
-  display: none;
-}
-.tree-move-list {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  z-index: 10;
-  background: #1a1a1a;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  padding: 0.2rem;
-  min-width: 8rem;
-  max-height: 10rem;
-  overflow-y: auto;
-}
-.tree-move-list button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 0.75rem;
-  padding: 0.25rem 0.4rem;
-  cursor: pointer;
-}
-.tree-move-list button:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.tree-delete {
+.tree-rename {
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.4);
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   cursor: pointer;
   padding: 0 0.2rem;
 }
-.tree-delete:hover {
-  color: #f44336;
+.tree-rename:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+.tree-delete {
+  margin-left: 0; /* 既存の margin-left: auto はrenameボタンへ移す */
+}
+.tree-row {
+  /* 既存のflexレイアウトのまま。rename/deleteボタンを右端に寄せるため、name直後の要素に auto-margin を付ける */
+}
+.tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-name-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #111;
+  color: #fff;
+  border: 1px solid #2196f3;
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  font-size: inherit;
+  font-family: inherit;
 }
 ```
 
-`.tree-row`は既に`display:flex; align-items:center; gap:0.4rem;`のため、`.tree-move`/`.tree-delete`は追加の子要素として自然に右側へ並ぶ(`.tree-move`の`margin-left:auto`で右寄せ)。
+**注意**: 既存の`.tree-delete { margin-left: auto; ... }`ルールがある場合、rename/deleteボタン2つを右端にまとめて寄せたいので、`.tree-name`に`flex: 1 1 auto`を与えて名前欄が伸縮するようにし、`margin-left: auto`は削除してよい(名前欄が伸びることで自然にボタン群が右に押し出される)。既存のCSSと整合するよう調整すること。
 
 ## 検証方法
 
 1. `cd web && npm run dev`を起動しておく。
 2. CLAUDE.mdの手順(終了→ビルド→起動)でビルドする。
 3. `OSM_JS_FRONTEND=1 OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`で起動する。
-4. 左ペインの「+ Group」ボタンをクリックすると新しいGroupが作成され、ツリーに表示されることを確認する(QML側でも同じGroupが見えることを確認する)。
-5. Stored行の「移動」アイコンをクリックすると、作成済みGroup一覧+「Top level」が表示され、Groupを選択するとそのGroup配下へインデントされて移動することを確認する(Phase 11のインデント表示と連動)。「Top level」を選択すると再びトップレベルへ戻ることを確認する。
-6. Stored/Group行の「×」(削除)をクリックすると確認ダイアログが出て、OKすると実際に削除されることを確認する(Groupを削除した場合、配下のStoredも連鎖的に消えることを確認する)。
-7. 右ペイン「Transfer Function」の「+ Measurement」ボタンをクリックすると、新しいMeasurementソースが追加され一覧に表示されることを確認する(QML側でも見えることを確認する)。
-8. 右ペインには移動機能が無いこと(測定ソースは常にトップレベルのままであること)を確認する。
-9. `npm run build`(tscの型チェック含む)が通ること。
-10. `OSM_JS_FRONTEND`を設定しない通常起動で、既存機能に変化がないことを確認する(回帰確認)。
+4. 左ペインの「✎」アイコン、またはデータ名のダブルクリックで編集モードになり、Enterで確定・Escapeでキャンセルできることを確認する。
+5. 既存の別のアイテムと同じ名前に変更しようとすると、「同じ名前では保存できません」のアラートが出て変更が確定しないことを確認する。
+6. Storeボタンを短時間に連続で押し、自動生成名(`Measure @ HH:mm`)が衝突するケースで、2つ目以降が自動的に`_copy-2`等の連番付きになることを確認する(既存のバグとして実際に重複表示していたことをこの修正で解消できることも確認する)。
+7. Group配下にStoredがある状態でGroupのチェックボックスをオフにすると、配下の行の**データ名の文字も**グレー表示になることを確認する(チェックボックスだけでなく)。
+8. `npm run build`(tscの型チェック含む)が通ること。
+9. `OSM_JS_FRONTEND`を設定しない通常起動で、既存機能に変化がないことを確認する(回帰確認)。
 
 ## 完了後の作業
 
-- [js-frontend-phases.md](js-frontend-phases.md)のPhase 12のタスクチェックリストにチェックを入れ、完了メモを追記し、進捗表を「完了」に更新する。
-- [customizations.md](customizations.md)の該当節に、移動機能を左ペイン(Stored/Group)限定にした理由(Phase 11でのユーザー方針: 測定ソースは元々グループ化不可)を追記する。
+- [js-frontend-phases.md](js-frontend-phases.md)のPhase 12完了メモに、この追加修正(リネームUI、重複防止、配下名グレー表示)を追記する。
+- [customizations.md](customizations.md)の該当節に、`SourceList::appendItem`での自動リネーム(`_copy-N`)の挙動と、既存セッション読み込み時にも適用される点を明記する。

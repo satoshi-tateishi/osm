@@ -66,7 +66,7 @@ resizeAll()
 
 connectWebChannel((message) => { statusEl.textContent = message })
 
-channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices }) => {
+channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, sourceList }) => {
   let currentSettingsUuid: string | null = null
 
   function renderPanel(payload: SettingsPayload) {
@@ -104,6 +104,9 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices }
 
     renderSourceTree(sourceTreeEl, sessionItems, {
       onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
+      onMove: (uuid, targetParentUuid, index) => sourceTree.moveToPosition(uuid, targetParentUuid, index),
+      onDelete: (uuid) => sourceList.removeItem(uuid, true),
+      onAddGroup: () => sourceList.addGroup(),
     })
     renderMeasurementList(measurementListEl, measurementItems, {
       onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
@@ -111,6 +114,7 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices }
         charts.setSpectrogramSource(uuid, canvases.spectrogram)
         settings.selectSource(uuid)
       },
+      onAddMeasurement: () => sourceList.addMeasurement(),
     })
     charts.setActiveUuids(new Set(items.filter((item) => item.active).map((item) => item.uuid)), canvases)
   })

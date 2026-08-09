@@ -22,7 +22,7 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 | Phase 9 | 測定ソースと保存データの表示分離(左=Session Data、右=Transfer Function) | 完了 |
 | Phase 10 | 信号発生器パネル | 完了 |
 | Phase 11 | グループのツリー再帰対応(Stored専用) | 完了 |
-| Phase 12 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 未着手 |
+| Phase 12 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 完了 |
 | Phase 13 | JS版をデフォルトUIへ昇格 + QML版の扱い | 未着手 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
@@ -410,9 +410,19 @@ public:
 
 **対象ファイル**: `src/chart/sourcetreebridge.h/.cpp`(`storeItem(QUuid)`は既にPhase 6〜7で用意済み。`addMeasurement`/`addGroup`/`removeItem`/`moveToGroup`/`moveItem`は`sourceList`オブジェクトを直接呼べば足りるため新規実装は不要)、`web/src/sourceTree.ts`(追加/Store/削除ボタン、ドラッグ&ドロップは任意)
 
+**タスク**:
+- [x] Session DataへGroup追加・削除操作を追加する
+- [x] Transfer FunctionへMeasurement追加操作を追加する
+- [x] Stored/GroupをDnDで直前・直後・Group内へ移動できるようにする
+- [x] ドラッグ中の挿入位置バーとGroup格納ハイライトを表示する
+- [x] 非アクティブな祖先Group配下のチェックボックスを状態変更せずグレー表示する
+- [x] TypeScript/ViteとQt本体のビルドを確認する
+
 **完了条件**: JS左ペインだけで、Measurement追加→Store(スナップショット化)→Groupへ移動→削除、が一通り行える。
 
 **依存Phase**: Phase 6完了後、Phase 11(Group移動を含む場合)
+
+**完了メモ(2026-08-09)**: Session Dataへ`+ Group`・削除確認付きボタン・HTML5 DnDを追加し、Transfer Functionへ`+ Measurement`を追加した。行内のマウス位置は、Groupでは上25%=`before`、中央50%=`into`、下25%=`after`、それ以外では上下50%の`before`/`after`として判定する。`before`/`after`は細い青色の挿入バー、`into`はGroup行全体の枠線で移動先を示す。ルート末尾へ戻す専用ドロップ領域も設けた。既存`SourceList::move()`は呼び出したリスト直下の並び替えしかできず、Group内部をルートの`sourceList`経由では並び替えられないため、`SourceTreeBridge::moveToPosition(uuid, targetParentUuid, index)`を新設した。このメソッドは対象Groupの`SourceList`を解決し、既存`moveItem()`で妥当性・循環を検査しながら移動した後、指定位置へ並べ直す。同一階層内で下方向へ動かす場合は、移動元を除去する前の境界indexが1つずれるため補正する。並び替え後の最終順序をJSへ確実に配信するため、各リストの`postItemMoved`も再帰購読する。祖先Groupが非アクティブな子孫はチェック状態を保持したまま視覚的にグレー表示する。
 
 ---
 

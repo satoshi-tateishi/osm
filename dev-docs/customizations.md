@@ -462,3 +462,11 @@
 - `SourceTreeBridge`がルートだけでなく各`Source::Group`内の`sourceList()`も再帰的に購読し、Group内での追加・削除や各アイテムのname/color/active変更をSession Dataへ反映するようにした。ツリーJSONは深さ優先順で、各項目に0始まりの`depth`と、直上Groupを示す`parentUuid`(トップレベルは`null`)を追加した。グループ移動に伴う再購読では`Qt::UniqueConnection`によりシグナル接続の重複を防ぐ。
 - Web側は折りたたみを設けず全階層を常時表示し、`depth`ごとに1remずつ行をインデントする。
 - 測定ソースは意図的にグループ化不可のままとする。測定ソースは通常4〜8個程度で増え続けない一方、STOREデータは継続的に増えるため、階層整理が必要なのはStored側のみである。既存の`SourceList::isGroupableData()`がGroupへ格納可能な型をStored/Groupに制限しているため、当初検討した`DataBridge`のGroup再帰対応は不要であり、Transfer Functionとチャート配信はトップレベルMeasurement専用のまま変更していない。
+
+### Phase 12完了(JS版Session DataのDnD移動・挿入位置表示・追加/削除)
+
+`src/chart/sourcetreebridge.h/.cpp`、`web/src/sourceTree.ts`、`web/src/measurementList.ts`、`web/src/main.ts`、`web/src/style.css`
+
+- Session DataのStored/Group行をHTML5 DnD対応にした。Group行は上25%を「直前」、中央50%を「中へ」、下25%を「直後」とし、通常行は上半分/下半分を「直前」/「直後」とする3ゾーン設計である。「直前/直後」は行境界の細い青色バー、「中へ」はGroup行全体の青色枠でプレビューし、画面下部にはルート末尾へ戻す専用ドロップ領域を置いた。
+- 既存`SourceList::move()`は、その`SourceList`直下のindexしか操作できず、ルートリストからGroup内部の順序を指定できない。このため`SourceTreeBridge::moveToPosition(uuid, targetParentUuid, index)`を新設し、`targetParentUuid`からGroup自身の`SourceList`を解決したうえで、既存`moveItem()`による型妥当性・循環チェック付き移動と、移動先リストでの`move()`を連続して行う。Web側のindexは移動元を除去する前の行境界なので、同一リスト内の下方向移動だけ1減算して挿入バーと実際の位置を一致させる。追加・削除通知だけでは最後の`move()`後の順序がWebへ届かないため、ルートと各Groupの`postItemMoved`も購読して最終ツリーを再配信する。
+- Session Dataに`+ Group`と確認ダイアログ付き削除ボタン、Transfer Functionに`+ Measurement`を追加し、WebChannelへ公開済みのルート`sourceList`を呼び出す。Groupの祖先のいずれかが非アクティブなら、子孫のチェック状態自体は変えずチェックボックスだけをグレー表示する。

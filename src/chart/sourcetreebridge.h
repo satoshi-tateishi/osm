@@ -22,6 +22,9 @@ public:
     Q_INVOKABLE void setActive(const QString &uuid, bool active);
     Q_INVOKABLE void storeItem(const QString &uuid);
     Q_INVOKABLE void requestTree();
+    Q_INVOKABLE void moveToPosition(const QString &uuid,
+                                    const QString &targetParentUuid,
+                                    int index);
 
 signals:
     void treeChanged(const QString &json);
@@ -34,6 +37,7 @@ private:
     void watchList(SourceList *list);
     void appendItemsJson(SourceList *list, const QUuid &parentUuid,
                          int depth, QJsonArray &array);
+    SourceList *resolveList(const QString &parentUuidString) const;
 
     SourceList *m_sourceList;
 };

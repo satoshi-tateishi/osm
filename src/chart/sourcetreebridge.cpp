@@ -23,6 +23,8 @@ void SourceTreeBridge::watchList(SourceList *list)
             this, &SourceTreeBridge::onItemAppended, Qt::UniqueConnection);
     connect(list, &SourceList::postItemRemoved,
             this, &SourceTreeBridge::emitTree, Qt::UniqueConnection);
+    connect(list, &SourceList::postItemMoved,
+            this, &SourceTreeBridge::emitTree, Qt::UniqueConnection);
 
     for (const auto &item : list->items()) {
         onItemAppended(item);
@@ -97,6 +99,46 @@ void SourceTreeBridge::storeItem(const QString &uuid)
     auto source = m_sourceList->getByUUid(QUuid(uuid));
     if (source) {
         m_sourceList->storeItem(source);
+    }
+}
+
+SourceList *SourceTreeBridge::resolveList(const QString &parentUuidString) const
+{
+    if (parentUuidString.isEmpty()) {
+        return m_sourceList;
+    }
+
+    auto parent = m_sourceList->getByUUid(QUuid(parentUuidString));
+    auto *group = parent ? dynamic_cast<Source::Group *>(parent.get()) : nullptr;
+    return group ? group->sourceList() : nullptr;
+}
+
+void SourceTreeBridge::moveToPosition(const QString &uuidString,
+                                      const QString &targetParentUuidString,
+                                      int index)
+{
+    auto *targetList = resolveList(targetParentUuidString);
+    if (!targetList) {
+        return;
+    }
+
+    auto uuid = QUuid(uuidString);
+    // The web UI sends a boundary index from the list before the dragged item
+    // is removed. Compensate when moving downward within that same list.
+    auto originalIndex = targetList->indexOf(uuid);
+    if (originalIndex >= 0 && originalIndex < index) {
+        --index;
+    }
+    m_sourceList->moveItem(uuid, QUuid(targetParentUuidString));
+
+    auto currentIndex = targetList->indexOf(uuid);
+    if (currentIndex < 0) {
+        return;
+    }
+
+    auto clampedIndex = qBound(0, index, targetList->count() - 1);
+    if (clampedIndex != currentIndex) {
+        targetList->move(currentIndex, clampedIndex);
     }
 }
 

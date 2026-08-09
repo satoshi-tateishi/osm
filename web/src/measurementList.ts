@@ -8,6 +8,7 @@ export interface MeasurementItem {
 export interface MeasurementCallbacks {
   onToggleActive: (uuid: string, active: boolean) => void
   onSelect: (uuid: string) => void
+  onAddMeasurement: () => void
 }
 
 export interface MeterValues {
@@ -23,7 +24,7 @@ const METER_MAX_DB = 0
 let selectedUuid: string | null = null
 
 export function renderMeasurementList(container: HTMLElement, items: MeasurementItem[], callbacks: MeasurementCallbacks) {
-  container.innerHTML = items.length
+  const rowsHtml = items.length
     ? items.map((item) => `
       <div class="measurement-row${item.uuid === selectedUuid ? ' selected' : ''}" data-uuid="${item.uuid}">
         <div class="measurement-row-header">
@@ -44,6 +45,15 @@ export function renderMeasurementList(container: HTMLElement, items: Measurement
       </div>
     `).join('')
     : '<p class="placeholder">測定ソースがありません</p>'
+
+  container.innerHTML = `
+    <div class="tree-toolbar">
+      <button type="button" data-add-measurement>+ Measurement</button>
+    </div>
+    <div class="measurement-list">${rowsHtml}</div>
+  `
+
+  container.querySelector('[data-add-measurement]')?.addEventListener('click', () => callbacks.onAddMeasurement())
 
   container.querySelectorAll<HTMLInputElement>('.measurement-active').forEach((checkbox) => {
     checkbox.addEventListener('click', (event) => event.stopPropagation())
