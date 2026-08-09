@@ -1,99 +1,150 @@
-# 実装プロンプト: フロントエンドJS化 Phase 13(JS版をデフォルトUIへ昇格 + QML版の扱い)
+# 実装プロンプト: フロントエンドJS化 Phase 19(Settingsポップオーバーに測定ソース削除ボタンを追加)
 
-このファイルは[js-frontend-phases.md](js-frontend-phases.md) Phase 13を実装するための指示書。Phase 12(左ペインDnD移動・挿入位置バー・階層的な表示/非表示・リネーム・重複防止)は完了・実機確認済み。Phase 6〜12でSmaart風3ペインUI(Session Data/チャート/Transfer Function+Settings+Generator)が実用レベルに達したため、JS版を`OSM_JS_FRONTEND`環境変数なしでも起動する既定のUIへ切り替える。
+このファイルは[js-frontend-phases.md](js-frontend-phases.md) Phase 19を実装するための指示書。Phase 18(各測定行にEstimated Delayのリアルタイム表示・適用・手動入力)は完了・実機確認済み・push済み。今回は`web/src/`のみの変更。
 
-## 現状(Phase 12完了時点)
+## 背景
 
-`src/main.cpp`の末尾付近は概ね以下の形になっている:
+右ペインのTransfer Function(測定ソース一覧)には、測定ソースを削除する導線が今のところ存在しない(左ペインSession Dataの`×`ボタンによる削除は保存データ用で、測定ソースの一覧には及ばない)。Phase 17で追加したSettingsポップオーバー(歯車クリックで開く、`web/src/settingsPanel.ts`の`renderSettingsPanel`が描画)の一番下に、赤い「削除」ボタンを追加する。
 
-```cpp
-    std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
-    if (qEnvironmentVariableIsSet("OSM_JS_FRONTEND")) {
-        jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
-            sourceList.get(), generator.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
-    }
+## 現状
 
-    engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
+`web/src/settingsPanel.ts`の`renderSettingsPanel`は、フォームの最後に`.settings-actions`(Reset Average/Storeボタン)と`#settings-meter`(Level/Ref/Peakテキスト)を描画して終わる:
 
-    if (engine.rootObjects().isEmpty())
-        return -1;
-
-    return QApplication::exec();
+```html
+<div class="settings-actions">
+  <button data-action="reset-average">Reset Average</button>
+  <button data-action="store">Store</button>
+</div>
+<div id="settings-meter" class="settings-meter"></div>
 ```
 
-QMLエンジンは、メニューバー(`qml/menu/Top.qml`等、macOSのネイティブメニュー)、Autosaver、Notifier等、アプリ全体で使われるインフラを含んでいる。**この段階でQML側のコード自体を削除するのはリスクが高い**(メニューバーの動作確認・移植が別途必要になる)ため、今回は「QMLは引き続き読み込む(裏方のインフラとして生かす)が、既定では非表示にし、JS側のウィンドウだけを前面に出す」という設計にする。
+コールバック型:
 
-## Phase 13のスコープ
-
-1. 環境変数の意味を以下のように反転・整理する:
-   - **環境変数なし(既定)**: JS版のみが見える状態で起動する(QMLは裏で読み込まれるが非表示)。
-   - `OSM_JS_FRONTEND_DISABLE=1`: JS版を起動せず、QML版のみ表示する(従来の既定動作、フォールバック/デバッグ用)。
-   - `OSM_QML_FRONTEND=1`: JS版に加えてQML版のウィンドウも表示する(移行期間中の比較確認用)。
-   - `OSM_JS_DEV_SERVER=1`: (変更なし)JS側をqrc同梱版ではなくViteの開発サーバーから読み込む。
-2. QMLのルートウィンドウを、既定では`hide()`して非表示にする(削除はしない)。
-3. `customizations.md`・`js-frontend-phases.md`にこの判断を記録する。
-
-**注意点(重要・必ず実機確認すること)**: QMLのルートウィンドウを`hide()`した状態で、macOSのネイティブメニューバー(File/View/Help)が正しく機能し続けるかは事前に断定できない。Qtのメニューバーは通常「アクティブなウィンドウ」に紐づくため、QMLウィンドウを完全に非表示にするとメニューが空になる、あるいはJS側のQWebEngineViewウィンドウにメニューが出ない、といった不具合が起きる可能性がある。**もしメニューバーが機能しなくなった場合は、`hide()`ではなく`showMinimized()`(Dockに畳む)を使う、またはQMLウィンドウを画面外に移動する(`window->setPosition(-10000, -10000)`)等の代替策を試すこと。** どの方式が良いかは実機での見た目・メニュー動作を見て判断してよい。
-
-## 実装1: `src/main.cpp`の変更
-
-`#include <QQuickWindow>`を追加(未追加であれば)。
-
-末尾の起動シーケンスを以下に変更:
-
-```cpp
-    engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
-
-    if (engine.rootObjects().isEmpty())
-        return -1;
-
-    const bool qmlFrontendRequested = qEnvironmentVariableIsSet("OSM_QML_FRONTEND");
-    const bool jsFrontendDisabled = qEnvironmentVariableIsSet("OSM_JS_FRONTEND_DISABLE");
-
-    std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
-    if (!jsFrontendDisabled) {
-        jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
-            sourceList.get(), generator.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
-
-        if (!qmlFrontendRequested) {
-            if (auto *qmlWindow = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-                qmlWindow->hide();
-            }
-        }
-    }
-
-    return QApplication::exec();
+```ts
+export function renderSettingsPanel(
+  container: HTMLElement,
+  payload: SettingsPayload | null,
+  callbacks: {
+    onChange: (name: string, value: number | string | boolean) => void
+    onResetAverage: () => void
+    onStore: () => void
+  },
+) { ... }
 ```
 
-`engine.load(...)`を先頭に移動している点に注意(従来は`jsFrontendManager`生成の後にあった)。QMLのルートウィンドウを取得するには`engine.load()`が完了している必要があるため。
+左ペインSession Data(`web/src/sourceTree.ts`)の既存の削除ボタンは以下のパターンで実装されている(確認ダイアログの文言も揃えること):
 
-## 実装2: `dev-docs/js-frontend-phases.md`の変更
+```ts
+row.querySelector('[data-delete]')?.addEventListener('click', () => {
+  if (confirm('このアイテムを削除しますか?')) {
+    callbacks.onDelete(uuid)
+  }
+})
+```
 
-Phase 13のタスクにチェックを入れ、完了メモを追記し、進捗表を「完了」に更新する。
+`main.ts`では`channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, sourceList }) => {...})`のスコープ内に`sourceList`があり、実際の削除は`sourceList.removeItem(uuid, true)`で行う(`sourceTree.ts`用の`onDelete`配線: `onDelete: (uuid) => sourceList.removeItem(uuid, true)`と同じAPI)。
 
-冒頭のサマリ文(「Phase 0〜5が完了し...」で始まる段落、および「方針転換」段落)を、Phase 6〜13が完了しJS版がデフォルトUIになったことを踏まえて更新する。
+## 実装1: `web/src/settingsPanel.ts`の変更
 
-## 実装3: `dev-docs/customizations.md`の変更
+`renderSettingsPanel`のコールバック型に`onDelete`を追加:
 
-該当節(または新規節)に以下を記録する:
-- JS版がデフォルトUIになった経緯(Phase 6〜12でSmaart風3ペインUIが実用レベルに達したこと)。
-- QML版は削除せず、既定では非表示のまま裏方インフラ(メニューバー等)として存続させる判断とその理由。
-- 環境変数`OSM_JS_FRONTEND_DISABLE`/`OSM_QML_FRONTEND`の意味。
-- メニューバーの動作確認結果(問題なければその旨、問題があれば採用した代替策)。
+```ts
+export function renderSettingsPanel(
+  container: HTMLElement,
+  payload: SettingsPayload | null,
+  callbacks: {
+    onChange: (name: string, value: number | string | boolean) => void
+    onResetAverage: () => void
+    onStore: () => void
+    onDelete: () => void
+  },
+) { ... }
+```
+
+フォーム末尾(`#settings-meter`の後)に削除ボタンのブロックを追加:
+
+```html
+<div id="settings-meter" class="settings-meter"></div>
+<div class="settings-danger-zone">
+  <button type="button" class="settings-delete-button" data-action="delete">削除</button>
+</div>
+```
+
+イベント登録(既存の`reset-average`/`store`の登録の近くに追加):
+
+```ts
+container.querySelector('[data-action="delete"]')?.addEventListener('click', callbacks.onDelete)
+```
+
+## 実装2: `web/src/main.ts`の変更
+
+`renderPanel(payload)`内、`renderSettingsPanel`呼び出しのコールバックに`onDelete`を追加する。確認ダイアログの文言は`sourceTree.ts`と同じ「このアイテムを削除しますか?」を使うこと。削除確定後はポップオーバーを閉じる(`closeSettingsPopover()`は既にimport済み):
+
+```ts
+function renderPanel(payload: SettingsPayload) {
+  if (!payload.uuid) return
+  const content = getSettingsPopoverContentIfOpenFor(payload.uuid)
+  if (!content) return
+  currentSettingsUuid = payload.uuid
+  renderSettingsPanel(content, payload, {
+    onChange: (name, value) => { /* 既存のまま */ },
+    onResetAverage: () => settings.resetAverage(payload.uuid),
+    onStore: () => settings.store(payload.uuid),
+    onDelete: () => {
+      if (!confirm('このアイテムを削除しますか?')) {
+        return
+      }
+      closeSettingsPopover()
+      currentSettingsUuid = null
+      sourceList.removeItem(payload.uuid, true)
+    },
+  })
+  repositionSettingsPopover()
+}
+```
+
+`chartData.sourceRemoved`の既存ハンドラ(Phase 17で追加済み)は、削除されたuuidがポップオーバーで開いていた場合に重ねて閉じようとするが、`closeSettingsPopover()`は複数回呼んでも安全な実装になっているはずなので問題ない(ハンドラ側の変更は不要)。
+
+## 実装3: `web/src/style.css`の変更
+
+`.settings-actions`の近くに追加:
+
+```css
+.settings-danger-zone {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.settings-delete-button {
+  width: 100%;
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.4);
+  border-radius: 4px;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.settings-delete-button:hover {
+  background: rgba(244, 67, 54, 0.28);
+  border-color: #f44336;
+  color: #fff;
+}
+```
 
 ## 検証方法
 
-1. CLAUDE.mdの手順(終了→ビルド→起動)でビルドする。
-2. 環境変数なしで起動し(`./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`、または`open build/OpenSoundMeter.app`)、JS版のウィンドウ(3ペインUI)だけが表示され、QML版のウィンドウが見えないことを確認する。
-3. **メニューバー(File/View/Help)が正しく機能することを確認する**(前述の注意点)。機能しない場合は代替策を試し、結果を完了メモに記録する。
-4. `OSM_JS_FRONTEND_DISABLE=1`で起動すると、従来通りQML版のみが表示されることを確認する。
-5. `OSM_QML_FRONTEND=1`で起動すると、JS版とQML版の両方のウィンドウが表示されることを確認する。
-6. JS版を通常に操作し(測定・チャート表示・設定変更・Generator・Session Dataの操作)、Phase 6〜12で確認済みの機能が全て問題なく動作することを確認する(退行がないこと)。
-7. `cd web && npm run build`が通ること。
-8. アプリを終了・再起動しても問題なく同じ挙動になることを確認する(複数回の起動サイクルで安定していること)。
+1. `cd web && npm run build`が通ることを確認する。
+2. CLAUDE.mdの手順(終了→ビルド→起動)でビルド・起動する。
+3. いずれかの測定行の歯車をクリックしてSettingsポップオーバーを開き、フォームの一番下に赤い「削除」ボタンが表示されていることを確認する。
+4. 削除ボタンをクリックすると確認ダイアログが出ること、キャンセルすると何も起きないことを確認する。
+5. 確認ダイアログでOKを押すと、その測定ソースがTransfer Function一覧・Session Data・チャートから消え、ポップオーバーも閉じることを確認する。
+6. 誤って別の測定ソースが削除されていないこと(意図した1件だけが消えること)を確認する。
+7. 削除後に残りの測定ソースのSettingsポップオーバー・Estimated Delay等、Phase 6〜18で確認済みの機能に退行がないか一通り確認する。
 
 ## 完了後の作業
 
-- [js-frontend-phases.md](js-frontend-phases.md)のPhase 13のタスクチェックリストにチェックを入れ、完了メモ(メニューバーの動作確認結果を含む)を追記し、進捗表を「完了」に更新する。冒頭のサマリ文も更新する。
-- [customizations.md](customizations.md)に、JS版デフォルト化の経緯と環境変数の意味を記録する。
-- QML側コード自体の削除は**このPhaseでは行わない**(スコープ外、将来の判断に委ねる)。
+- [js-frontend-phases.md](js-frontend-phases.md)のPhase 19のタスクチェックリストにチェックを入れ、完了メモを追記し、進捗表を「完了」に更新する。
+- [customizations.md](customizations.md)にも変更内容と理由を追記する。
