@@ -24,6 +24,7 @@ Phase 0〜13が完了し、5チャート、トップレベルの複数Measuremen
 | Phase 11 | グループのツリー再帰対応(Stored専用) | 完了 |
 | Phase 12 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 完了 |
 | Phase 13 | JS版をデフォルトUIへ昇格 + QML版の扱い | 完了 |
+| Phase 14 | Generatorパネルをウィンドウ右下に固定表示 | 完了 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
 
@@ -452,3 +453,22 @@ public:
 **完了メモ(2026-08-09)**: `engine.load()`完了後にJS版の起動可否を判定する順序へ変更した。環境変数なしでは`JsFrontendManager`を生成してQMLルートの`QQuickWindow`を`hide()`し、`OSM_JS_FRONTEND_DISABLE=1`ではJS版を生成せずQML版のみ、`OSM_QML_FRONTEND=1`ではJS版とQML版の両方を表示する。`OSM_JS_DEV_SERVER=1`の意味は従来どおりである。QMLエンジンは常時ロードされるため、QML側のAutosaver、Notifier、ネイティブメニュー等は維持される。JS版には下記スコープ外機能が残り、さらにQML側インフラの移植も済んでいないため、QMLコードの削除は将来Phaseへ延期した。`npm run build`とQt 5.15.2のシャドウビルドが成功した。macOS実機で、通常起動は`OSM`ウィンドウ1枚のみ、JS無効時は`Open Sound Meter`(QML)1枚のみ、QML追加時は両方の2枚になることを確認した。通常起動時もネイティブメニューバーの`File`/`View`/`Help`と各メニュー項目が取得できたため、代替策は使わず`hide()`を採用した。起動モードを切り替えながら複数回終了・再起動してもクラッシュは発生しなかった。
 
 **明示的にスコープ外とする項目(Phase 6〜13共通)**: `.osm`セッションの新規UI(既存`sourceList.save/load`をそのまま呼ぶだけなので専用UIは作らない)、CSVエクスポート、キャリブレーションファイルUI、TFC windowの詳細設定、`remote::Server/Client`連携、チャートのpointsPerOctave等の表示設定(Measurement設定ではなくChart/Plot設定のため対象外)、Stored recallのチャート描画対応(Phase 9で「今回は扱わない」と明記)。
+
+---
+
+## Phase 14: Generatorパネルをウィンドウ右下に固定表示
+
+**目的**: Phase 13でJS版がデフォルトUIになったのを受け、UIの完成度を高める最初の改善として、右ペイン内の`Generator`セクションを、Transfer Function/Settingsのスクロールに巻き込まれずウィンドウの右下に常時固定表示する。
+
+**対象ファイル**: `web/src/main.ts`(右ペインのDOM構造)、`web/src/style.css`(レイアウト)
+
+**タスク**:
+- [x] `.pane-right`をレイアウト用のflexコンテナに変更し、Generator部分だけを下端に固定する
+- [x] Transfer Function + Settingsは独立してスクロールできるようにする(Generatorは常に見えたまま)
+- [x] 動作確認・完了メモを本ファイルに追記
+
+**依存Phase**: Phase 13完了後
+
+**明示的にスコープ外とする項目**: Generatorパネル自体の中身(信号発生器の機能)の変更は行わない。あくまで配置(レイアウト)の変更のみ。
+
+**完了メモ(2026-08-09)**: 右ペインのDOMを、Transfer Function + Settingsを含む`.pane-right-scroll`と、Generatorを含む`.pane-right-generator`に分離した。`.pane-right`を縦方向のflexコンテナにし、上側だけを`overflow-y: auto`、下側を`flex: 0 0 auto`とした。上側には`min-height: 0`も指定し、内容が多い場合にflex要素が縮まずGeneratorを押し出すことを防いだ。`npm run build`とQt 5.15.2 x64/OpenGLのシャドウビルドが成功した。測定4件の状態で通常サイズ(1440×875)と縮小サイズ(1000×600)を実機確認し、Transfer Function/Settingsの表示領域が縮まってもGeneratorは右下に留まり、左・中央ペインのレイアウトとチャート更新に影響がないことを確認した。Generatorは従来のデバイス、レベル、On/Off、チャンネル選択の表示とQWebChannel接続を維持しており、機能ロジックには変更を加えていない。

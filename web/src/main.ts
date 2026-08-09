@@ -25,12 +25,16 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <canvas id="chart-coherence" class="chart"></canvas>
   </div>
   <div class="pane pane-right">
-    <h2>Transfer Function</h2>
-    <div id="measurement-list"></div>
-    <h2>Settings</h2>
-    <div id="settings-panel"><p class="placeholder">左のリストからソースを選択してください</p></div>
-    <h2>Generator</h2>
-    <div id="generator-panel"></div>
+    <div class="pane-right-scroll">
+      <h2>Transfer Function</h2>
+      <div id="measurement-list"></div>
+      <h2>Settings</h2>
+      <div id="settings-panel"><p class="placeholder">左のリストからソースを選択してください</p></div>
+    </div>
+    <div class="pane-right-generator">
+      <h2>Generator</h2>
+      <div id="generator-panel"></div>
+    </div>
   </div>
 `
 const statusEl = document.querySelector<HTMLParagraphElement>('#status')!

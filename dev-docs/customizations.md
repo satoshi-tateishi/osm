@@ -482,3 +482,11 @@
 - `OSM_JS_FRONTEND_DISABLE=1`はJS版を生成せず従来のQML版だけを表示するフォールバック/デバッグ用、`OSM_QML_FRONTEND=1`はJS版に加えてQML版も表示する比較確認用である。両方を同時指定した場合はJS無効化が優先され、QML版だけが表示される。
 - QML依存インフラの移植と、JS版で意図的にスコープ外としたセッション新規UI、CSVエクスポート、キャリブレーションUI、詳細チャート設定、Stored recall等の扱いが確定するまでは、QML側コードの削除を行わない。
 - `web`のTypeScript/Vite本番ビルドとQt 5.15.2のシャドウビルドが成功した。macOS実機では、通常起動=`OSM`(JS)1枚、`OSM_JS_FRONTEND_DISABLE=1`=`Open Sound Meter`(QML)1枚、`OSM_QML_FRONTEND=1`=両方の2枚となることを確認した。通常起動でもネイティブメニューバーの`File`/`View`/`Help`と各項目が残り、複数回の起動モード切り替えでも安定していたため、QMLウィンドウの扱いは`showMinimized()`や画面外移動ではなく`hide()`を採用した。
+
+### Phase 14完了(Generatorパネルを右下に固定)
+
+`web/src/main.ts`、`web/src/style.css`
+
+- 右ペインを「Transfer Function + Settingsのスクロール領域」と「Generatorの固定領域」に分離し、右ペイン自体を縦方向のflexコンテナに変更した。内容が増えてもGeneratorをTransfer Function/Settingsのスクロールに巻き込まず、ウィンドウ右下に常時表示するための変更である。
+- 上側領域は`flex: 1 1 auto`、`min-height: 0`、`overflow-y: auto`、Generator領域は`flex: 0 0 auto`とした。`.pane-right`で既存の`.pane`のoverflowとpaddingを上書きし、それぞれの子領域へpaddingを移したため、左・中央ペインのレイアウトは変更していない。
+- 通常サイズと縮小サイズでGeneratorが右下に留まること、測定4件のTransfer Function表示、Session Data、チャート更新、Generatorの従来の各コントロール表示とQWebChannel接続が維持されることをmacOS実機で確認した。
