@@ -4,6 +4,7 @@ import { renderMeasurementList, updateMeasurementMeter, type MeasurementItem } f
 import { renderSourceTree, type TreeItem } from './sourceTree'
 import { renderSettingsPanel, renderMeter, type SettingsPayload, type MeterPayload } from './settingsPanel'
 import { channelReady, connectWebChannel } from './webchannel'
+import { setupGeneratorPanel } from './generatorPanel'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="pane pane-left">
@@ -28,12 +29,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div id="measurement-list"></div>
     <h2>Settings</h2>
     <div id="settings-panel"><p class="placeholder">左のリストからソースを選択してください</p></div>
+    <h2>Generator</h2>
+    <div id="generator-panel"></div>
   </div>
 `
 const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
 const sourceTreeEl = document.querySelector<HTMLDivElement>('#source-tree')!
 const measurementListEl = document.querySelector<HTMLDivElement>('#measurement-list')!
 const settingsPanelEl = document.querySelector<HTMLDivElement>('#settings-panel')!
+const generatorPanelEl = document.querySelector<HTMLDivElement>('#generator-panel')!
 const centerPaneEl = document.querySelector<HTMLDivElement>('.pane-center')!
 const canvases: charts.ChartCanvases = {
   magnitude: document.querySelector<HTMLCanvasElement>('#chart-magnitude')!,
@@ -62,7 +66,7 @@ resizeAll()
 
 connectWebChannel((message) => { statusEl.textContent = message })
 
-channelReady.then(({ sourceTree, chartData, settings }) => {
+channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices }) => {
   let currentSettingsUuid: string | null = null
 
   function renderPanel(payload: SettingsPayload) {
@@ -151,4 +155,6 @@ channelReady.then(({ sourceTree, chartData, settings }) => {
       renderPanel({ uuid: null })
     }
   })
+
+  setupGeneratorPanel(generatorPanelEl, generator, outputDevices)
 })

@@ -3,15 +3,18 @@
 #include <QWebChannel>
 #include <QWebEngineView>
 
+#include "audio/devicemodel.h"
 #include "databridge.h"
 #include "settingsbridge.h"
 #include "sourcetreebridge.h"
+#include "src/generator/generator.h"
 #include "src/sourcelist.h"
 
 namespace Chart {
 
-JsFrontendManager::JsFrontendManager(SourceList *sourceList, bool useDevServer, QObject *parent)
-    : QObject(parent), m_sourceList(sourceList)
+JsFrontendManager::JsFrontendManager(SourceList *sourceList, Generator *generator, bool useDevServer,
+                                     QObject *parent)
+    : QObject(parent), m_sourceList(sourceList), m_generator(generator)
 {
     m_dataBridge = new DataBridge(m_sourceList, this);
     m_sourceTreeBridge = new SourceTreeBridge(m_sourceList, this);
@@ -22,6 +25,11 @@ JsFrontendManager::JsFrontendManager(SourceList *sourceList, bool useDevServer, 
     m_channel->registerObject(QStringLiteral("sourceTree"), m_sourceTreeBridge);
     m_channel->registerObject(QStringLiteral("chartData"), m_dataBridge);
     m_channel->registerObject(QStringLiteral("settings"), m_settingsBridge);
+    m_channel->registerObject(QStringLiteral("generator"), m_generator);
+
+    auto *outputDeviceModel = new audio::DeviceModel(this);
+    outputDeviceModel->setScope(audio::DeviceModel::OutputOnly);
+    m_channel->registerObject(QStringLiteral("outputDevices"), outputDeviceModel);
 
     m_view = new QWebEngineView();
     m_view->page()->setWebChannel(m_channel);

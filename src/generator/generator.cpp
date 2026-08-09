@@ -109,6 +109,17 @@ QSet<int> Generator::channels() const
     return m_thread.channels();
 }
 
+QVariantList Generator::channelsList() const
+{
+    QVariantList list;
+    const auto set = channels();
+    list.reserve(set.count());
+    for (const auto &channel : set) {
+        list.append(channel);
+    }
+    return list;
+}
+
 void Generator::setChannels(const QSet<int> &channels)
 {
     QMetaObject::invokeMethod(

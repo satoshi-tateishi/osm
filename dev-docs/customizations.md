@@ -194,6 +194,7 @@
 `qml/GeneratorProperties.qml`
 
 - 信号タイプ選択の`DropDown`(id: `type`)を`visible: false`で非表示化し、`Component.onCompleted`で`control.currentGenerator.type`を`generatorModel.types`内の"Pink"のインデックスに強制設定。`GeneratorThread`のソースリスト順(`src/generator/generatorthread.cpp`)でPinkNoiseは先頭(index 0)だが、ハードコードせず`model.indexOf("Pink")`で検索している。
+- JS版のGeneratorパネル(`web/src/generatorPanel.ts`)にも同じ制約を実装した。信号タイプは画面に表示せず、初期化時に`generator.types.indexOf("Pink")`で求めたインデックスを`generator.type`へ設定する。
 
 ## Generatorの"even inv"(偶数チャンネル逆相)の非表示化
 
@@ -442,3 +443,14 @@
 - `SettingsBridge`が入力専用の`audio::DeviceModel`を保持し、選択Measurementの入力デバイス一覧と現在デバイスのチャンネル名(+内部ループバック`Loop`)をJSON配信する。SettingsにInput device、Measurement channel (M)、Reference channel (R)を追加し、デバイス変更後の設定再配信でチャンネル候補を更新する。
 - Phase 8で対象外理由としていたデバイスIDの型について再確認し、`audio::DeviceInfo::Id`は実際には`QString`の型エイリアスで、`Measurement::deviceId`のQ_PROPERTY宣言と一致することが分かった。そのため専用セッターは不要で、汎用`QObject::setProperty`を使用する。Web側は`deviceId`を文字列のまま、`dataChanel`/`referenceChanel`を数値として送る。
 - Storedのactiveチェックをチャートへ反映するrecall表示は、Measurement用`DataBridge`とは別のデータ経路が必要なため本Phaseでは扱わない。
+
+### Phase 10完了(信号発生器パネル)
+
+`src/generator/generator.h/.cpp`、`src/chart/jsfrontendmanager.h/.cpp`、`src/main.cpp`、(新規)`web/src/generatorPanel.ts`、`web/src/webchannel.ts`、`web/src/main.ts`、`web/src/style.css`
+
+- アプリ起動時に1回だけ生成される既存`Generator`インスタンスを、`JsFrontendManager`の固定WebChannelオブジェクト`generator`として直接登録した。Q_PROPERTYとNOTIFYをqwebchannel.jsの自動バインディングで利用できるため、専用ブリッジや手動JSONシグナルは設けていない。
+- Web版の右ペイン下部にGeneratorパネルを追加した。最終的な2行×3列のフィールド構成は、上段が出力インターフェース選択・レベル・On/Off、下段が出力ポートのチェックボックス式複数選択・レベルの「−」・「+」である。On時のボタンは赤色で表示する。
+- 出力専用`audio::DeviceModel`を固定WebChannelオブジェクト`outputDevices`として追加した。`list()`でインターフェースのID・名前を列挙し、既存の`indexOf()`と`channelNames()`で選択中インターフェースの実際のポート名を取得する。Q_INVOKABLE呼び出しはいずれも非同期コールバックとして扱い、デバイス変更時にチェックボックス一覧を更新する。
+- `QSet<int>`はQWebChannelでJSON化できないため、既存の`setChannels(QList<QVariant>)`と`channelsChangedQList`を使う`QVariantList channelsList`プロパティを`Generator`へ追加した。
+- Pink Noiseの固定表示は廃止したが、信号タイプは画面に出さず、パネル初期化時に内部の`generator.type`をPinkへ強制する既存方針を維持した。
+- TypeScript/ViteとQt本体のビルド後、開発サーバー版をCDPで開き、2行×3列の要素順、出力インターフェース3件、Pink表示なし、チェック変更時のサマリー`Ch: 1, 2`↔`Ch: 2`同期、インターフェース切替時のポート一覧更新と元設定への復元、QWebChannel接続を確認した。安全のためGeneratorはOFFのままとし、実音出しとQML側からの逆方向同期は未確認。`OSM_JS_FRONTEND`未設定の通常UIも短時間継続起動した。

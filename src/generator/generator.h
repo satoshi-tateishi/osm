@@ -52,6 +52,8 @@ class Generator : public QObject
     Q_PROPERTY(float duration READ duration WRITE setDuration NOTIFY durationChanged)
 
     Q_PROPERTY(QSet<int> channels READ channels WRITE setChannels NOTIFY channelsChanged)
+    Q_PROPERTY(QVariantList channelsList READ channelsList WRITE setChannels NOTIFY
+               channelsChangedQList)
 
     Q_PROPERTY(bool evenPolarity READ evenPolarity WRITE setEvenPolarity NOTIFY evenPolarityChanged)
 
@@ -115,6 +117,7 @@ public:
     QSet<int> channels() const;
     void setChannels(const QSet<int> &channels);
     void setChannels(const QList<QVariant> channels);
+    QVariantList channelsList() const;
 
     bool evenPolarity() const;
     void setEvenPolarity(bool newevenPolarity);

@@ -72,6 +72,19 @@ QHash<int, QByteArray> DeviceModel::roleNames() const
     return names;
 }
 
+QVariantList DeviceModel::list() const
+{
+    QVariantList result;
+    result.reserve(m_list.size());
+    for (const auto &deviceInfo : m_list) {
+        QVariantMap item;
+        item["id"] = deviceInfo.id();
+        item["name"] = deviceInfo.name();
+        result.append(item);
+    }
+    return result;
+}
+
 void DeviceModel::updateLists()
 {
     beginResetModel();

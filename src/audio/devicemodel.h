@@ -54,6 +54,7 @@ public:
     Q_INVOKABLE audio::DeviceInfo::Id deviceId(const int &index);
     Q_INVOKABLE int indexOf(const audio::DeviceInfo::Id &deviceId);
     Q_INVOKABLE QStringList channelNames(const int &index);
+    Q_INVOKABLE QVariantList list() const;
 
 private slots:
     void updateLists();

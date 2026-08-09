@@ -6,6 +6,7 @@
 class QWebChannel;
 class QWebEngineView;
 class SourceList;
+class Generator;
 
 namespace Chart {
 
@@ -19,11 +20,13 @@ class JsFrontendManager : public QObject
 {
     Q_OBJECT
 public:
-    explicit JsFrontendManager(SourceList *sourceList, bool useDevServer, QObject *parent = nullptr);
+    explicit JsFrontendManager(SourceList *sourceList, Generator *generator, bool useDevServer,
+                               QObject *parent = nullptr);
     ~JsFrontendManager() override;
 
 private:
     SourceList *m_sourceList;
+    Generator *m_generator;
     QWebChannel *m_channel;
     QWebEngineView *m_view;
     DataBridge *m_dataBridge;

@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
     std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
     if (qEnvironmentVariableIsSet("OSM_JS_FRONTEND")) {
         jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
-            sourceList.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
+            sourceList.get(), generator.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
     }
 
     engine.load(QUrl(QStringLiteral("qrc:/main.qml")));

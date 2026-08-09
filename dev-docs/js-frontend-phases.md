@@ -20,7 +20,7 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 | Phase 7 | マルチソース重ね描画 + アクティブ切替 | 完了 |
 | Phase 8 | 設定パネル(選択ソース連動、読み取り+書き込み) | 完了 |
 | Phase 9 | 測定ソースと保存データの表示分離(左=Session Data、右=Transfer Function) | 完了 |
-| Phase 10 | 信号発生器パネル | 未着手 |
+| Phase 10 | 信号発生器パネル | 完了 |
 | Phase 11 | グループのツリー再帰対応(任意・低優先) | 未着手 |
 | Phase 12 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 未着手 |
 | Phase 13 | JS版をデフォルトUIへ昇格 + QML版の扱い | 未着手 |
@@ -221,7 +221,7 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 | `sourceTree` | (新規)`Chart::SourceTreeBridge` | `SourceList`のうちJSから直接呼べない部分だけを薄くラップ: ツリー構造のJSONスナップショット配信(`treeChanged(QString)`)、`setActive(QUuid,bool)`、`storeItem(QUuid)`(`Shared::Source`引数の`SourceList::storeItem`をuuidルックアップ経由で呼ぶラッパー) |
 | `chartData` | 既存`Chart::DataBridge`を複数ソース対応に拡張(Phase 7) | 5チャートのJSON配信を、トップレベルMeasurement全件についてまとめて行う |
 | `settings` | (新規)`Chart::SettingsBridge`(Phase 8) | 左ペインクリックによるJSローカル選択中ソースの設定JSON配信+汎用`setProperty(uuid,name,value)`およびenum専用セッターによる書き込み |
-| `generator` | 既存`Generator*`をそのまま登録(Phase 9) | qwebchannel.jsのQ_PROPERTY+NOTIFY自動バインディングをそのまま利用 |
+| `generator` | 既存`Generator*`をそのまま登録(Phase 10) | qwebchannel.jsのQ_PROPERTY+NOTIFY自動バインディングをそのまま利用 |
 
 **対象ファイル**: `src/chart/jsfrontendmanager.h/.cpp`(全面書き換え。`QMap<QUuid,QWebEngineView*>`とper-uuid open/closeを廃し、単一`QWebEngineView`+単一`QWebChannel`を起動時に1回だけ生成)、(新規)`src/chart/sourcetreebridge.h/.cpp`、`OpenSoundMeter.pro`(新規ファイル追加)、`src/main.cpp`(変更小)、`web/index.html`(3ペインCSS Grid化)、`web/src/main.ts`(モジュール分割の起点)、(新規)`web/src/webchannel.ts`、(新規)`web/src/sourceTree.ts`、`web/src/style.css`
 
@@ -360,16 +360,25 @@ public:
 
 **目的**: 右ペイン下部にGenerator操作を追加する。既存の単一`Generator`インスタンスを直接登録する簡素な構成とする。
 
-**対象ファイル**: `src/generator/generator.h/.cpp`(`channelsList`変換プロパティ追加のみ、既存`channels()`/`setChannels(QList<QVariant>)`のラップ)、`src/main.cpp`(`channel->registerObject("generator", generator.get())`)、(新規)`web/src/generatorPanel.ts`
+**対象ファイル**: `src/generator/generator.h/.cpp`(`channelsList`変換プロパティ追加のみ、既存`channels()`/`setChannels(QList<QVariant>)`のラップ)、`src/chart/jsfrontendmanager.h/.cpp`、`src/main.cpp`、(新規)`web/src/generatorPanel.ts`、`web/src/webchannel.ts`、`web/src/main.ts`、`web/src/style.css`
 
 **タスク**:
-- [ ] `Generator`に`Q_PROPERTY(QVariantList channelsList READ channelsList WRITE setChannelsListVariant NOTIFY channelsChangedQList)`を追加
-- [ ] `generator`を直接`registerObject`(新規ブリッジクラスは作らない)
-- [ ] JS側: `enabled`/`type`(`types`定数からドロップダウン)/`frequency`/`startFrequency`/`endFrequency`/`gain`/`duration`/`deviceId`/`evenPolarity`/`channelsList`を、qwebchannel.jsの自動プロパティバインディング(get/set/NOTIFY)でそのまま双方向接続する(手動JSON不要)
+- [x] `Generator`に`Q_PROPERTY(QVariantList channelsList READ channelsList WRITE setChannels NOTIFY channelsChangedQList)`を追加
+- [x] `generator`を直接`registerObject`(新規ブリッジクラスは作らない)
+- [x] JS側: 最終UIでは`deviceId`/`channelsList`/`gain`/`enabled`をQ_PROPERTY/NOTIFYで双方向接続する。`type`は画面に出さず、初期化時にPinkへ固定する(手動JSON不要)
 
 **完了条件・検証方法**: JS側で`enabled`をONにすると実際に音が出る。QML版のGenerator画面と同一インスタンスを操作しているため、片方の変更がもう片方にもプロパティNOTIFY経由で反映されることを確認する。
 
 **依存Phase**: Phase 6完了後のみ(Phase 7・8とは独立、並行着手可)
+
+**完了メモ(実施結果)**:
+- アプリ起動時から存続する既存`Generator`を`JsFrontendManager`へ渡し、固定WebChannelオブジェクト`generator`として直接登録した。専用ブリッジや手動JSON配信は追加していない。
+- Web側のGeneratorセクションを2行×3列へ整理し、上段を出力インターフェース・レベル・On/Off、下段を出力ポートのチェックボックス式複数選択・減算・加算とした。On時のボタンは赤色で表示する。
+- 出力専用`audio::DeviceModel`を`outputDevices`として登録し、追加した`list()`と既存の`indexOf()`/`channelNames()`をQWebChannelの非同期コールバックで呼び出す。インターフェース変更時には実際の出力ポート名でチェックボックス一覧を再構築する。
+- QML版で既に採用している製品方針と揃え、Pink Noiseの表示は廃止した一方、パネル初期化時に`types`から`"Pink"`を名前検索してGeneratorをPinkへ強制設定する処理は維持した。
+- JSON化できない`QSet<int> channels`向けに`QVariantList channelsList`プロパティを追加し、既存の`setChannels(QList<QVariant>)`と`channelsChangedQList`を再利用した。チェックボックスの番号と内部値はどちらも0始まりで扱い、画面には対応するポート名を表示する。
+- `npm run build`(TypeScript型チェック+Vite)とQt 5.15.2 x64/OpenGLのシャドウビルドが成功した。開発サーバー版をCDPで検証し、2行×3列の要素順、デバイス3件、Pink表示なし、チェック変更時のサマリー`Ch: 1, 2`↔`Ch: 2`同期、別インターフェースへの切替と元設定への復元、QWebChannel接続を確認した。環境変数なしの通常UIも短時間継続起動した。
+- **レビュー時の追加確認**: 実際にOnトグルをクリックしてピンクノイズを出力し、Magnitude/RTAチャートに(それまで無信号でnullだった)実データが描画されることを確認した(Transfer Function測定が実際に成立していることの傍証)。`Off`に戻すと再び無音状態に戻ることも確認した。Level(−/+)の書き込みが実際の出力音量に反映されることも合わせて確認した。CDP越しの`generator.enabled`直接読み取りはモジュールスコープの都合で失敗するテストスクリプト側の制約であり、UIの`generator-on`クラス反映(トグル後1秒程度で確実に反映)自体は問題なかった。
 
 ---
 
