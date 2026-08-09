@@ -52,6 +52,7 @@ export function renderSettingsPanel(
     onChange: (name: string, value: number | string | boolean) => void
     onResetAverage: () => void
     onStore: () => void
+    onDelete: () => void
   },
 ) {
   if (!payload || !payload.uuid) {
@@ -103,6 +104,9 @@ export function renderSettingsPanel(
       <button data-action="store">Store</button>
     </div>
     <div id="settings-meter" class="settings-meter"></div>
+    <div class="settings-danger-zone">
+      <button type="button" class="settings-delete-button" data-action="delete">削除</button>
+    </div>
   `
 
   container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-prop]').forEach((el) => {
@@ -119,6 +123,7 @@ export function renderSettingsPanel(
   })
   container.querySelector('[data-action="reset-average"]')?.addEventListener('click', callbacks.onResetAverage)
   container.querySelector('[data-action="store"]')?.addEventListener('click', callbacks.onStore)
+  container.querySelector('[data-action="delete"]')?.addEventListener('click', callbacks.onDelete)
 }
 
 export function renderMeter(payload: MeterPayload) {

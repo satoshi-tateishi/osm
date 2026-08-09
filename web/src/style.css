@@ -314,7 +314,7 @@ body {
   position: fixed;
   z-index: 1000;
   width: 300px;
-  height: 70vh;
+  height: calc(100vh - 32px);
   overflow-y: auto;
   box-sizing: border-box;
   background: #161616;
@@ -441,6 +441,29 @@ h2 {
 
 .settings-actions button:hover {
   background: #333;
+}
+
+.settings-danger-zone {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.settings-delete-button {
+  width: 100%;
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.4);
+  border-radius: 4px;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.settings-delete-button:hover {
+  background: rgba(244, 67, 54, 0.28);
+  border-color: #f44336;
+  color: #fff;
 }
 
 .generator-grid {

@@ -93,6 +93,14 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
       },
       onResetAverage: () => settings.resetAverage(payload.uuid),
       onStore: () => settings.store(payload.uuid),
+      onDelete: () => {
+        if (!confirm('このアイテムを削除しますか?')) {
+          return
+        }
+        closeSettingsPopover()
+        currentSettingsUuid = null
+        sourceList.removeItem(payload.uuid, true)
+      },
     })
     repositionSettingsPopover()
   }
