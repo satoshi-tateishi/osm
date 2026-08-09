@@ -614,3 +614,10 @@
 - **不具合報告3(ユーザーからの追加報告)**: しきい値ハンドルがドラッグできず、実機で確認するとハンドルやグラデーションバーが本来の位置(チャート右上のY軸ラベル欄付近)ではなくチャート下の別の場所に表示されていた。CDP(`QTWEBENGINE_REMOTE_DEBUGGING`)で実DOMの`getBoundingClientRect()`/`getComputedStyle()`を調べたところ、オーバーレイ用の`.spectrogram-thresholds { position:absolute; top:0; right:0; bottom:0; left:0; }`が実際には高さ0×幅0にしかならず、`position:absolute`要素が(top/left指定があるにもかかわらず)通常フロー上の静的位置(=`.chart-spectrogram-wrap`直後、Spectrogramチャートの下)にフォールバックしていた。原因は、Viteのビルド時CSS圧縮(esbuild)が`top/right/bottom/left: 0`をまとめて`inset: 0`ショートハンドに自動変換しており、Qt 5.15.2同梱の(比較的古い)QtWebEngineのChromiumが`inset`プロパティ自体を解釈できず、そのCSS宣言をまるごと無視していたため。`document.styleSheets`から実際に配信されているCSSルールをCDPで確認して特定した。対策として`top/left`+`width:100%; height:100%`という、`inset`へ圧縮されない書き方に変更した。この問題は他のCSSでも起こりうる(4辺すべてを0または同一値で指定するコードは要注意)ため、教訓として記録しておく。
 - CDPで実際に`pointerdown`→`pointermove`→`pointerup`イベントをハンドル要素へディスパッチし、ラベルのテキストが追従して更新されること(ドラッグが実際に機能すること)を確認した。さらにLower/Upperの現在値を常時表示するラベル(`.spectrogram-thresholds-label`)をハンドル脇に追加した(QML版はToolTip実装でホバー時のみ表示だったが、常時表示の方が値を把握しやすいとのユーザー要望のため変更)。
 - Generatorをオン/オフして実機のSpectrogramを数秒間隔でスクリーンショット比較し、新しいデータが下端に現れ、既存の模様が時間経過とともに上へ移動する(QML版と同じ方向)ことを視覚的に確認した。しきい値バーの見た目(赤→黄→緑→青のグラデーション、ハンドル位置、ラベル表示)も実機で確認した。
+
+### Phase 27完了(チャートの表示順を変更)
+
+`web/src/main.ts`
+
+- チャートの並びをMagnitude, RTA, Spectrogram, Phase, Coherenceから、Magnitude, Phase, Coherence, RTA, Spectrogramの順に変更した(ユーザー要望)。`main.ts`のHTMLテンプレート内のブロック順序を入れ替えるのみで、各チャートの実装・データフローに変更はない。
+- macOS実機で表示順がMagnitude→Phase→Coherence→RTA→Spectrogramになっていることをスクリーンショットで確認した。

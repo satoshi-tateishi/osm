@@ -18,6 +18,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="pane pane-center">
     <h2>Magnitude</h2>
     <canvas id="chart-magnitude" class="chart"></canvas>
+    <h2>Phase</h2>
+    <canvas id="chart-phase" class="chart"></canvas>
+    <h2>Coherence</h2>
+    <canvas id="chart-coherence" class="chart"></canvas>
     <h2>RTA</h2>
     <canvas id="chart-rta" class="chart"></canvas>
     <h2>Spectrogram</h2>
@@ -25,10 +29,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <canvas id="chart-spectrogram" class="chart"></canvas>
       <div id="spectrogram-thresholds" class="spectrogram-thresholds"></div>
     </div>
-    <h2>Phase</h2>
-    <canvas id="chart-phase" class="chart"></canvas>
-    <h2>Coherence</h2>
-    <canvas id="chart-coherence" class="chart"></canvas>
   </div>
   <div class="pane pane-right">
     <div class="pane-right-scroll">
