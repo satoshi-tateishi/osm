@@ -516,11 +516,10 @@ void Measurement::writeData(const char *data, qint64 len)
     bool forceRef = referenceChanel() >= totalChanels;
     bool forceData = dataChanel() >= totalChanels;
     float loopSample = 0;
-    bool loopAvailable = m_loopBuffer.collected() >= m_audioStream->depth() * len / (totalChanels * sizeof(float));
     qint64 offset = 0;
     for (auto it = data; offset < len; ) {
         if (currentChanel == 0) {
-            loopSample = loopAvailable ? m_loopBuffer.read() : 0;
+            loopSample = m_loopBuffer.collected() > 0 ? m_loopBuffer.read() : 0;
         }
 
         if (currentChanel == dataChanel()) {

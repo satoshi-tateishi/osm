@@ -37,8 +37,10 @@ export function setupGeneratorPanel(container: HTMLElement, generator: any, outp
   generator.gainChanged.connect(syncFromGenerator)
 
   toggleEl.addEventListener('click', () => { generator.enabled = !generator.enabled })
+  const MAX_GAIN_DB = -18
+
   decEl.addEventListener('click', () => { generator.gain = Math.round(generator.gain) - 1 })
-  incEl.addEventListener('click', () => { generator.gain = Math.round(generator.gain) + 1 })
+  incEl.addEventListener('click', () => { generator.gain = Math.min(Math.round(generator.gain) + 1, MAX_GAIN_DB) })
 
   function updateChannelsSummary(names: string[], selected: Set<number>) {
     if (selected.size === 0) {

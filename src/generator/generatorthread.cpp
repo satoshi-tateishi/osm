@@ -16,6 +16,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <QVariant>
 
 #include "generatorthread.h"
@@ -34,12 +35,16 @@
 
 GeneratorThread *GeneratorThread::s_instance = nullptr;
 
+//Pink noise (the fixed generator signal type) is RMS-calibrated with only ~16dB of
+//headroom to its theoretical peak; capping the gain keeps it from clipping.
+static const float MAX_GAIN = -18.f;
+
 GeneratorThread::GeneratorThread(QObject *parent) :
     QThread(parent),
     m_deviceId(audio::Client::getInstance()->defaultDeviceId(audio::Plugin::Direction::Output)),
     m_audioStream(nullptr),
     m_sources(),
-    m_gain(-6.f), m_duration(1.f),
+    m_gain(MAX_GAIN), m_duration(1.f),
     m_type(0),
     m_frequency(1000),
     m_startFrequency(20),
@@ -241,6 +246,7 @@ void GeneratorThread::setEndFrequency(int endFrequency)
 }
 void GeneratorThread::setGain(float gain)
 {
+    gain = std::min(gain, MAX_GAIN);
     if (!qFuzzyCompare(gain, m_gain)) {
         m_gain = gain;
         emit gainChanged(gain);

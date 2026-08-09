@@ -537,3 +537,25 @@
 - 削除確認はSession Dataの既存操作と同じ「このアイテムを削除しますか?」に統一した。キャンセル時は状態を変更せず、確定時はポップオーバーを閉じて選択uuidをクリアした後、ボタンを描画したSettings payloadのuuidだけを既存の`sourceList.removeItem(uuid, true)`で削除する。
 - 実機で削除ボタンの表示にスクロールが必要だったため、ポップオーバーの高さを`70vh`から`calc(100vh - 32px)`に拡張した。上端は従来位置のまま、画面下端に16pxの余白を残し、通常のウィンドウ高では削除ボタンまでスクロールなしで表示する。
 - macOS実機で、スクロールなしの削除ボタン表示と、確認後に対象の測定ソースを正常に削除できることを確認した。
+
+### Phase 20完了(PinkNoiseのRMS較正 + Generator上限を-18dBに制限)
+
+`src/generator/pinknoise.cpp`、`src/generator/generatorthread.cpp`、`qml/Generator.qml`、`qml/GeneratorProperties.qml`、`web/src/generatorPanel.ts`
+
+- **不具合報告**: Generatorから-18dBでPinkNoiseを再生し、測定ソースのReference入力を"Loop"(Generator出力をハードウェアを介さず直接Referenceへ流し込む内部機構、`Measurement::m_loopBuffer`)にすると、Referenceのレベル表示が-18dBではなく-34dB程度にしかならなかった。
+- 調査の過程で`Measurement::writeData()`の`m_loopBuffer`可用性判定(`depth()`ブロック分溜まるまで待つ高水位ゲート)を疑い、フレーム単位の判定に修正したが、実測値は変化せず原因ではなかった(この修正自体は無害なため残している)。
+- 真因は`src/generator/pinknoise.cpp`の振幅正規化だった。`m_scalar = 1.0f / pmax`は12帯域の乱数値が理論上の最大値に同時に揃った(実際にはほぼ起こらない)ピークを0dBFSに正規化する設計のため、実際のRMSはピーク基準よりおよそ16dB(統計的な導出値: √(3×13)倍の逆数、約-15.9dB)低くなる。この統計的な乖離をPythonでのシミュレーションと解析的な導出の両方で確認し、実測ギャップ(-16.2dB)とほぼ一致した。
+- `m_scalar`を`std::sqrt(3.f * (numRows + 1)) / pmax`に変更し、長期的なRMSがGeneratorのdB設定と一致するよう再較正した。この変更により瞬間ピークはdB設定値よりおよそ12〜14dB(クレストファクター分)高くなり得るため、クリッピング防止として`GeneratorThread::setGain()`にGeneratorの上限-18dBのクランプを追加した(`generatorthread.cpp`のファイルスコープ定数`MAX_GAIN`。デフォルト値もこれに合わせて変更)。上限はQML(`GeneratorProperties.qml`のポップオーバー版スピンボックと`Generator.qml`の本体パネル版スピンボックの両方)とJS版(`generatorPanel.ts`の+ボタン)のUI側にも反映したが、実際の安全弁はバックエンド側のクランプである。
+- このフォークはGenerator信号種別を常時"Pink"に固定しているため(前述「Generatorの"Signal Type"を"Pink"固定化」)、この較正はキャリブレーション精度に直結する。White/Brown Noise等、他の信号種別のRMS較正は今回のスコープ外。
+- macOS実機(MacBook Air内蔵スピーカー/マイクによる内蔵ループバック)で、PinkNoise -18dB再生時のReferenceレベルが -18dB付近(クレストファクター込みでおおよそ-12〜-24dB程度の振れ幅)に収まることを確認した。
+
+### Phase 21完了(測定ソースのレベルメーターに色分け・境界線・センタースケール調整)
+
+`web/src/measurementList.ts`、`web/src/style.css`
+
+- Transfer Functionの各測定行のM/Rレベルメーターバーを単色(緑固定)から、レベル位置に応じた4色のグラデーション(青: 低レベル/緑: 良好/黄: 注意/赤: クリップ注意)へ変更した。一目で信号品質のレンジを把握できるようにするためである。色分けの閾値は「-30dB以下: 青」「-30dB〜-18dB: 緑」「-18dB〜-6dB: 黄(アンバー)」「-6dB以上: 赤」とした。
+- 実装は`.meter-fill`を常に等幅グラデーション背景として持たせ、現在のレベルに応じて`clip-path: inset()`で右側を隠す方式にした。`width`で幅を変える従来方式だと、要素自体が縮むためグラデーション位置(dB基準の絶対位置)も一緒に動いてしまい、色分けの意味が崩れるため採用しなかった。
+- `-30dB`と`-18dB`の位置に、レベルに関係なく常時表示される縦の境界線(`.meter-boundary`)を追加した。`-6dB`には明示的な境界線は追加していない(ユーザー要望どおり2本のみ)。
+- 瞬間ピークが-3dBを超えた際の既存クリップ警告(`.meter-clip`、単色赤)はそのまま維持し、グラデーションより優先して表示される。
+- メーターのdBレンジ(`METER_MIN_DB`/`METER_MAX_DB`、`measurementList.ts`)は当初-60dB〜0dBだったが、線形スケールでは中心(50%)が常に最小値の半分(-30dB)になり、一般的なレベルメーターの感覚(中心付近が-24dB程度)と異なるとのフィードバックを受け、`METER_MIN_DB`を-48dBに変更した。これにより中心がちょうど-24dBになる。色分け・境界線の位置(%)もこの新しいレンジ(-30dB=37.5%、-18dB=62.5%、-6dB=87.5%)に合わせて再計算した。
+- macOS実機で、色分けとグラデーションの見た目、境界線の表示、スケール変更後の中心位置を確認した。

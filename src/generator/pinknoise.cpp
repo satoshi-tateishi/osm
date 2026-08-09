@@ -15,6 +15,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <cmath>
 #include "pinknoise.h"
 
 PinkNoise::PinkNoise(QObject *parent) : OutputDevice(parent),
@@ -29,7 +30,14 @@ PinkNoise::PinkNoise(QObject *parent) : OutputDevice(parent),
     m_indexMask = (1 << numRows) - 1;
     /* Calculate maximum possible signed random value. Extra 1 for white noise always added. */
     pmax = (numRows + 1) * (1 << (RANDOM_BITS - 1));
-    m_scalar = 1.0f / pmax;
+    /* 1/pmax normalizes to the theoretical (practically unreachable) peak of summing
+     * numRows+1 independent generators, which leaves the actual RMS level ~16dB below
+     * the configured Generator gain. sqrt(3*(numRows+1)) is the analytic RMS-to-peak
+     * ratio of that sum (each term ~uniform, variance = pmax_term^2/12), so dividing by
+     * it instead calibrates the long-term RMS to match the gain setting. This trades
+     * away the hard peak ceiling, so the Generator's maximum gain is capped separately
+     * (see GeneratorThread::setGain) to keep headroom against clipping. */
+    m_scalar = std::sqrt(3.f * (numRows + 1)) / pmax;
 
     /* Initialize rows. */
     for (int i = 0; i < numRows; i++)

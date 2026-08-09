@@ -76,7 +76,7 @@ Item {
                 decimals: 0
                 from: -90
                 step: 1
-                to: 0
+                to: -18
                 units: "dB"
 
                 editable: true

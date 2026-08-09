@@ -24,7 +24,7 @@ export interface MeterValues {
   sampleRate?: number | null
 }
 
-const METER_MIN_DB = -60
+const METER_MIN_DB = -48
 const METER_MAX_DB = 0
 
 let selectedUuid: string | null = null
@@ -44,11 +44,19 @@ export function renderMeasurementList(container: HTMLElement, items: Measurement
         <div class="meter-group">
           <div class="meter-line">
             <span class="meter-label">M</span>
-            <div class="meter-bar"><div class="meter-fill" data-meter-fill="measurement"></div></div>
+            <div class="meter-bar">
+              <div class="meter-fill" data-meter-fill="measurement"></div>
+              <div class="meter-boundary meter-boundary-30"></div>
+              <div class="meter-boundary meter-boundary-18"></div>
+            </div>
           </div>
           <div class="meter-line">
             <span class="meter-label">R</span>
-            <div class="meter-bar"><div class="meter-fill" data-meter-fill="reference"></div></div>
+            <div class="meter-bar">
+              <div class="meter-fill" data-meter-fill="reference"></div>
+              <div class="meter-boundary meter-boundary-30"></div>
+              <div class="meter-boundary meter-boundary-18"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -141,14 +149,13 @@ function updateDelayDisplay(row: HTMLElement, values: MeterValues) {
 
 function updateMeterLine(row: HTMLElement, kind: 'measurement' | 'reference', level: number | null, peak: number | null) {
   const fill = row.querySelector<HTMLElement>(`[data-meter-fill="${kind}"]`)
+  if (!fill) return
   if (typeof level === 'number' && Number.isFinite(level)) {
     const ratio = Math.min(1, Math.max(0, (level - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB)))
-    if (fill) {
-      fill.style.width = `${ratio * 100}%`
-      fill.classList.toggle('meter-clip', typeof peak === 'number' && peak > -3)
-    }
+    fill.style.clipPath = `inset(0 ${100 - ratio * 100}% 0 0)`
+    fill.classList.toggle('meter-clip', typeof peak === 'number' && peak > -3)
   } else {
-    if (fill) fill.style.width = '0%'
+    fill.style.clipPath = 'inset(0 100% 0 0)'
   }
 }
 

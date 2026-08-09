@@ -59,7 +59,7 @@ Item {
                 implicitWidth: 165
                 value: control.currentGenerator.gain
                 from: -140
-                to: 0
+                to: -18
                 editable: true
                 onValueChanged: control.currentGenerator.gain = value
                 textFromValue: function(value, locale) {

@@ -369,6 +369,7 @@ body {
 }
 
 .meter-bar {
+  position: relative;
   flex: 1 1 auto;
   height: 6px;
   background: rgba(255, 255, 255, 0.12);
@@ -376,15 +377,39 @@ body {
   overflow: hidden;
 }
 
+/* METER_MIN_DB=-48 / METER_MAX_DB=0(measurementList.ts)を基準にした固定位置:
+   -30dB=37.5%, -18dB=62.5%, -6dB=87.5%(中心の50%が-24dBになる) */
 .meter-fill {
   height: 100%;
-  width: 0%;
-  background: #4caf50;
-  transition: width 0.08s linear;
+  width: 100%;
+  background: linear-gradient(to right,
+    #2196f3 0%, #2196f3 37.5%,
+    #4caf50 37.5%, #4caf50 62.5%,
+    #ffb300 62.5%, #ffb300 87.5%,
+    #f44336 87.5%, #f44336 100%);
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 0.08s linear;
 }
 
 .meter-fill.meter-clip {
   background: #f44336;
+}
+
+.meter-boundary {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.meter-boundary-30 {
+  left: 37.5%;
+}
+
+.meter-boundary-18 {
+  left: 62.5%;
 }
 
 .chart {
