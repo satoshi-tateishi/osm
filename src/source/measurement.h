@@ -78,6 +78,7 @@ class Measurement : public Abstract::Source, public Meta::Measurement
 
     Q_PROPERTY(long estimated READ estimated NOTIFY estimatedChanged)
     Q_PROPERTY(long estimatedDelta READ estimatedDelta NOTIFY estimatedChanged)
+    Q_PROPERTY(bool estimatedValid READ estimatedValid NOTIFY estimatedChanged)
 
     Q_PROPERTY(bool error MEMBER m_error NOTIFY errorChanged)
 
@@ -112,6 +113,7 @@ public:
 
     long estimated() const noexcept;
     long estimatedDelta() const noexcept;
+    bool estimatedValid() const noexcept;
 
     bool calibration() const noexcept;
     bool calibrationLoaded() const noexcept;
@@ -148,6 +150,9 @@ protected slots:
     void applyInputFilters();
 
 private:
+    static constexpr float DELAY_ESTIMATION_MIN_REFERENCE_LEVEL_DB = -50.f;
+    static constexpr unsigned int DELAY_FINDER_SIZE = 1U << 16;
+
     QTimer m_timer;
     QThread m_timerThread;
     InputDevice m_input;
@@ -163,6 +168,8 @@ private:
     int m_workingDelay;
     unsigned int m_delayFinderCounter;
     long m_estimatedDelay;
+    bool m_delayFinderCollecting;
+    std::atomic<bool> m_estimatedValid;
     bool m_error;
     std::atomic<bool>       m_onReset;
 

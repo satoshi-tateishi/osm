@@ -23,6 +23,8 @@ public:
 
     Q_INVOKABLE void selectSource(const QString &uuid);
     Q_INVOKABLE void setProperty(const QString &uuid, const QString &name, const QVariant &value);
+    Q_INVOKABLE void setDelay(const QString &uuid, int value);
+    Q_INVOKABLE void applyEstimatedDelay(const QString &uuid);
     Q_INVOKABLE void setMode(const QString &uuid, int value);
     Q_INVOKABLE void setAverageType(const QString &uuid, int value);
     Q_INVOKABLE void setFiltersFrequency(const QString &uuid, int value);

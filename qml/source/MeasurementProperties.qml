@@ -288,8 +288,10 @@ Item {
             }
 
             Button {
-                text: qsTr("%L1 ms")
-                    .arg(Number(1000 * dataObjectData.estimated / dataObjectData.sampleRate).toLocaleString(locale, 'f', 2));
+                text: dataObjectData.estimatedValid
+                    ? qsTr("%L1 ms").arg(Number(1000 * dataObjectData.estimated / dataObjectData.sampleRate).toLocaleString(locale, 'f', 2))
+                    : qsTr("—")
+                enabled: dataObjectData.estimatedValid
                 onClicked: {
                     delaySpin.value = dataObjectData.estimated;
                 }

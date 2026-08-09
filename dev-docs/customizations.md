@@ -516,3 +516,15 @@
 - 通常の測定行クリックはSpectrogramのソース選択だけを行い、Settingsの取得は歯車クリック時だけに分離した。TypeScript/ViteとQt本体のシャドウビルドが成功し、macOS実機で常設Settingsの消失、歯車とポップオーバー内フォームの表示、Generator配置の維持を確認した。
 - **実機確認での互換性修正**: 別測定へ切り替える前の旧フォーム消去に当初使用した`Element.replaceChildren()`は、Qt 5.15内蔵のChromiumでは未対応であり、歯車クリック時の例外によってポップオーバーが開かなかった。対応範囲の広い`textContent = ''`へ変更し、同じ歯車で閉じる、外側クリック、Escape、m1からm2への切替、ポップオーバーが常に1要素だけであることを実機WebEngine上で確認した。
 - ポップオーバーは歯車ごとの位置へ追従させず、チャート領域(`.pane-center`)の右上から内側へ16px空けた位置へ固定表示する。どの測定行から開いてもフォームの位置が変わらず、Transfer Function一覧を覆わない安定した表示にするためである。高さも70vhへ固定し、非同期のフォーム描画前後で位置が動かないようにした。
+
+### Phase 18完了(各測定行のリアルタイムEstimated Delay表示・適用・手動入力)
+
+`src/chart/databridge.cpp`、`src/chart/settingsbridge.h/.cpp`、`web/src/measurementList.ts`、`web/src/settingsPanel.ts`、`web/src/main.ts`、`web/src/style.css`
+
+- Measurementごとの適用中delay、Estimated Delay、sampleRateを、既存の`DataBridge::levelUpdated`へ相乗りさせて`readyRead`ごとにWeb側へ配信する。レベルメーターと同じ更新契機を利用し、追加のタイマーやポーリングは設けていない。
+- Transfer Functionの各測定行で、適用中delayをms単位の数値入力として常時表示し、Estimated Delayもms単位のボタンとして表示する。変換には各Measurementから配信されたsampleRateを使い、手動入力時はサンプル数へ丸めてバックエンドへ設定する。入力中の値を保護するため、数値入力にフォーカスがある間はリアルタイム値で上書きしない。
+- `SettingsBridge::setDelay(uuid, value)`と`applyEstimatedDelay(uuid)`は、既存の選択中ソースを経由せずuuidから対象Measurementを直接取得する。これにより、ある測定のSettingsポップオーバーを開いたまま別の測定行のdelayを操作しても、`m_selectedUuid`と`m_selectedSource`を変更しない。操作対象が選択中Measurement自身の場合だけ`emitSettings()`を呼び、Settings payloadも同期する。
+- TypeScript/ViteとQt本体のシャドウビルドが成功した。macOS実機で最新ビルドを起動し、アクティブな複数Measurementの適用値・Estimated Delayが行ごとに表示され、非アクティブ行は空欄・`—`のままになることを確認した。音声経路を使った適用操作とSettings選択維持はユーザーによる実機確認を残している。
+- 無音時の相互相関が偶発的なピーク位置をEstimated Delayとして返すことを防ぐため、Reference Levelが-50dB未満の間は`Measurement`の推定専用バッファへのサンプル投入と変換を停止する。推定値には`estimatedValid`状態を追加し、Web/QMLの両UIで無効時は`—`表示かつ適用不可とした。`SettingsBridge`側でも無効な推定値の適用を拒否するため、表示状態に依存せず古い値を適用できない。Reference Levelが-50dB以上へ回復した際は推定器をリセットし、有効な信号だけを蓄積して最初の推定が完了してから値を再表示する。
+- Transfer Function行の適用中Delay入力とEstimated Delayボタンは、ともに5.6remの固定幅とした。符号付き4桁および小数部を常時表示でき、値の桁数によってボックス幅が変わらないようにするためである。数値は等幅数字・右揃えとし、狭い右ペインでは既存どおり測定名だけが省略表示される。
+- Settingsポップオーバー内の`Delay (samples)`入力は非表示とした。Delay操作を各Transfer Function行のms単位入力へ集約し、同じ値を異なる単位で編集できる重複UIをなくすためである。バックエンドのdelayプロパティとSettings payloadは変更せず、行入力および推定値の適用機能は維持する。

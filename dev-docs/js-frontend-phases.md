@@ -28,6 +28,7 @@ Phase 0〜13が完了し、5チャート、トップレベルの複数Measuremen
 | Phase 15 | M/Rレベルメーターの数値表示廃止 + 間隔詰め | 完了 |
 | Phase 16 | Session Dataリネーム中のテキスト範囲選択がドラッグ移動になるバグ修正 | 完了 |
 | Phase 17 | 測定ソースのSettingsをポップオーバー化(歯車アイコン + 常設パネル廃止) | 完了 |
+| Phase 18 | 各測定行にEstimated Delayのリアルタイム表示 + 適用ボタン + ディレイ手動入力 | 完了 |
 
 実装を進めるたびに、この表の「状態」列(未着手/着手中/完了)を更新すること。
 
@@ -543,3 +544,30 @@ public:
 **明示的にスコープ外とする項目**: Settingsフォーム自体の項目・レイアウトの変更は行わない(表示場所の変更のみ)。
 
 **完了メモ(2026-08-09)**: Transfer Functionの各測定行のヘッダー右端へ歯車ボタンを追加し、通常の行選択からSettings読み込みを分離した。Settingsは`document.body`直下に一度だけ生成するポップオーバーへ既存フォームとメーターを描画し、同じ歯車の再クリック・外側クリック・Escape・閉じるボタンで閉じられる。別の歯車では同じ要素を使い回して対象を切り替え、対象Measurementの削除時にも閉じる。表示位置は歯車ごとに変えず、チャート領域の右上から内側へ16px空けた位置へ固定した。高さも70vhへ固定し、非同期のフォーム描画前後で位置が動かないようにした。旧フォームの消去はQt 5.15内蔵Chromiumが未対応の`replaceChildren()`を避け、`textContent = ''`を使用した。TypeScript/ViteとQt本体のシャドウビルドが成功し、macOS実機WebEngineでフォーム表示、全クローズ経路、m1からm2への切替、ポップオーバーの単一性、Generator固定領域の維持を確認した。
+
+---
+
+## Phase 18: 各測定行にEstimated Delayのリアルタイム表示 + 適用ボタン + ディレイ手動入力
+
+**目的**: QML版の測定プロパティ画面(`qml/source/MeasurementProperties.qml`)にあった、基準信号と測定信号の相互相関から推定するdelay(Estimated Delay)のリアルタイム表示・適用ボタンを、右ペインの各測定行(歯車の左)に常時表示する。現在適用中のディレイ値もその場で手動編集できるようにする。
+
+**対象ファイル**:
+- `src/chart/databridge.cpp`(`levelUpdated`にdelay/estimatedDelay/sampleRateを相乗り)
+- `src/chart/settingsbridge.h`/`.cpp`(uuid指定でdelayを設定・Estimated Delayを適用する新メソッド。選択中ソースの状態は変更しない)
+- `web/src/measurementList.ts`(行UIとイベント)
+- `web/src/settingsPanel.ts`(`MeterPayload`型の拡張)
+- `web/src/main.ts`(配線)
+- `web/src/style.css`
+
+**タスク**:
+- [x] `DataBridge::onReadyRead()`の`levelUpdated`ペイロードに`delay`(サンプル数)・`estimatedDelay`(サンプル数)・`sampleRate`(Hz)を追加する
+- [x] `SettingsBridge`に`setDelay(uuid, value)`・`applyEstimatedDelay(uuid)`をuuid指定の独立処理として追加する(`m_selectedUuid`を書き換えない。対象が現在選択中のソースと一致する場合のみ`emitSettings()`でポップオーバー側も同期する)
+- [x] 各測定行のヘッダー、歯車の左に「適用中のディレイ値(ms、編集可能な数値入力)」「Estimated Delay(ms、クリックで適用するボタン)」を追加する
+- [x] クリックでEstimated Delayをそのまま適用、手動入力欄はフォーカス中は上書きせずblur/Enterで確定する
+- [x] 動作確認・完了メモを本ファイルに追記
+
+**依存Phase**: Phase 17完了後
+
+**当初スコープ外としていた項目の変更(2026-08-09)**: Settingsポップオーバー内の「Delay (samples)」フィールドは、各測定行のms単位入力と編集機能が重複するため、実機確認後の追加要望により非表示とした。
+
+**完了メモ(2026-08-09)**: `DataBridge`の既存`readyRead`更新へ、各Measurementの適用中delay・Estimated Delay・sampleRateを追加し、レベルメーターと同じ頻度でWeb側へ配信するようにした。`SettingsBridge`にはuuidから対象Measurementを直接解決する`setDelay()`と`applyEstimatedDelay()`を追加し、Settingsポップオーバーの選択状態を変更せず別行から操作できるようにした。操作対象がポップオーバーで選択中の場合だけ設定スナップショットを再配信する。Transfer Functionの各行にはms単位の数値入力とEstimated Delay適用ボタンを追加し、sampleRateを使ってサンプル数と相互変換する。数値入力のフォーカス中はリアルタイム更新で上書きせず、Enterによるblurまたは通常のchangeで確定する。TypeScript/ViteとQt本体のシャドウビルドが成功し、macOS実機でアクティブ行の適用値・推定値が表示され、非アクティブ行は空欄・`—`のままとなる基本表示を確認した。音声経路を使ったクリック適用・手動入力・別行のSettings選択維持は実機確認項目として残る。追加の実機確認を受け、Reference Levelが-50dB未満では推定処理を停止し、Estimated Delayを`—`表示かつ適用不可とした。レベル回復時は推定器をリセットし、新しい推定が完了するまでは無効状態を維持する。

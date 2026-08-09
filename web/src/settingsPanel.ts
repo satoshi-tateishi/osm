@@ -28,6 +28,9 @@ export interface MeterPayload {
   referenceLevel: number | null
   measurementPeak: number | null
   referencePeak: number | null
+  delay?: number | null
+  estimatedDelay?: number | null
+  sampleRate?: number | null
 }
 
 const MODE_LABELS = ['FFT 1024', 'FFT 2048', 'FFT 4096', 'FFT 8192', 'FFT 16384', 'FFT 32768', 'FFT 65536', 'LTW', 'TFC']
@@ -64,7 +67,6 @@ export function renderSettingsPanel(
     <div class="settings-field"><label>Name</label><input type="text" data-prop="name" value="${escapeAttr(payload.name ?? '')}" /></div>
     <div class="settings-field"><label>Gain (dB)</label><input type="number" step="0.1" data-prop="gain" value="${payload.gain}" /></div>
     <div class="settings-field"><label>Offset (dB)</label><input type="number" step="0.1" data-prop="offset" value="${payload.offset}" /></div>
-    <div class="settings-field"><label>Delay (samples)</label><input type="number" step="1" data-prop="delay" value="${payload.delay}" /></div>
     <div class="settings-field"><label>Mode</label>
       <select data-prop="mode">${options(MODE_LABELS, payload.mode)}</select>
     </div>

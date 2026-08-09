@@ -69,6 +69,12 @@ void Deconvolution::transform(const FourierTransform *forward)
         }
     }
 }
+void Deconvolution::reset()
+{
+    m_maxIndex = 0;
+    m_data.fill(0.f);
+    m_fft.reset();
+}
 float Deconvolution::get(const unsigned int i) const
 {
 #ifdef WIN64
@@ -83,6 +89,7 @@ float Deconvolution::get(const unsigned int i) const
 void Deconvolution::setSize(unsigned int size)
 {
     m_size = size;
+    m_maxIndex = 0;
     m_norm = 1.f / (m_size);
     m_data.resize(m_size, 0.f);
     m_fft.setSize(m_size);

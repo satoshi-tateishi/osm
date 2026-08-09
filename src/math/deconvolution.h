@@ -29,6 +29,7 @@ public:
     ~Deconvolution() = default;
     void add(float in, float out);
     void transform(const FourierTransform *forward);
+    void reset();
     float get(const unsigned int i) const;
     void setSize(unsigned int size);
     void setWindowFunctionType(WindowFunction::Type type);

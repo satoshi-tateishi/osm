@@ -47,7 +47,7 @@ Open Sound Meterでは、1つの「ソース」(マイク入力などの`Measure
 | "94 dB"ボタン | - | 94dB SPLの校正音(ピストンフォン等)を鳴らした状態で押すと、現在のレベルから自動的にgainを逆算して適用(`applyAutoGain`) |
 
 > このフォークではMeasurementソースの既定値を変更している: `average type`は`LPF`→`FIFO`・`average count`は`1`→`12`、`Transform mode`は`FFT14`→`LTW`。window functionは"Hann"に固定(他の選択肢はUIから削除)。
-| delay (estimated delay delta) | サンプル数(ms表示) | 測定chとreference chの時間ずれ補正。右の"estimated"ボタンで自動推定値を適用可能 |
+| delay (estimated delay delta) | サンプル数(ms表示) | 測定chとreference chの時間ずれ補正。右の"estimated"ボタンで自動推定値を適用可能。Reference Levelが-50dB未満の間は無音・低レベルノイズによる誤推定を防ぐため推定処理を停止し、推定値を無効として表示・適用しない。-50dB以上へ戻った場合は推定器をリセットし、新しい解析結果が得られてから再び有効になる |
 
 ---
 

@@ -135,6 +135,8 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
         openSettingsPopover(uuid, anchorEl)
         settings.selectSource(uuid)
       },
+      onSetDelay: (uuid, delaySamples) => settings.setDelay(uuid, delaySamples),
+      onApplyEstimatedDelay: (uuid) => settings.applyEstimatedDelay(uuid),
       onAddMeasurement: () => sourceList.addMeasurement(),
     })
     charts.setActiveUuids(new Set(items.filter((item) => item.active).map((item) => item.uuid)), canvases)

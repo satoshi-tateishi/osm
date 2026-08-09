@@ -36,6 +36,33 @@ void SettingsBridge::setProperty(const QString &uuidString, const QString &name,
     emitSettings();
 }
 
+void SettingsBridge::setDelay(const QString &uuidString, int value)
+{
+    auto uuid = QUuid(uuidString);
+    auto source = m_sourceList->getByUUid(uuid);
+    if (auto *measurement = dynamic_cast<Measurement *>(source.get())) {
+        measurement->setDelay(value);
+        if (uuid == m_selectedUuid) {
+            emitSettings();
+        }
+    }
+}
+
+void SettingsBridge::applyEstimatedDelay(const QString &uuidString)
+{
+    auto uuid = QUuid(uuidString);
+    auto source = m_sourceList->getByUUid(uuid);
+    if (auto *measurement = dynamic_cast<Measurement *>(source.get())) {
+        if (!measurement->estimatedValid()) {
+            return;
+        }
+        measurement->setDelay(measurement->estimated());
+        if (uuid == m_selectedUuid) {
+            emitSettings();
+        }
+    }
+}
+
 void SettingsBridge::setMode(const QString &uuidString, int value)
 {
     if (QUuid(uuidString) != m_selectedUuid) {

@@ -252,6 +252,47 @@ body {
   white-space: nowrap;
 }
 
+.measurement-delay-input {
+  flex: 0 0 5.6rem;
+  width: 5.6rem;
+  box-sizing: border-box;
+  background: #111;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 0.1rem 0.25rem;
+}
+
+.measurement-delay-estimated {
+  flex: 0 0 5.6rem;
+  width: 5.6rem;
+  box-sizing: border-box;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 0.1rem 0.3rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.measurement-delay-estimated:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.measurement-delay-estimated:disabled {
+  color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.12);
+  cursor: default;
+}
+
 .measurement-gear {
   flex: 0 0 auto;
   background: transparent;

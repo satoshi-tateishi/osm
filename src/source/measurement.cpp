@@ -21,6 +21,7 @@
 #include <QDateTime>
 #include <QtMath>
 #include <algorithm>
+#include <cmath>
 #include <utility>
 #include "measurement.h"
 #include "audio/client.h"
@@ -42,7 +43,7 @@ Measurement::Measurement(QObject *parent) : Abstract::Source(parent), Meta::Meas
     m_currentMode(Mode::FFT10),
     m_currentTfcReferenceTime(tfcReferenceTime()),
     m_workingDelay(0), m_delayFinderCounter(0),
-    m_estimatedDelay(0),
+    m_estimatedDelay(0), m_delayFinderCollecting(false), m_estimatedValid(false),
     m_error(false), m_onReset(false),
     m_data(65536), m_reference(65536), m_loopBuffer(65536),
     m_enableCalibration(false), m_calibrationLoaded(false), m_calibrationList(), m_calibrationGain()
@@ -89,7 +90,7 @@ Measurement::Measurement(QObject *parent) : Abstract::Source(parent), Meta::Meas
 
     m_deconvolution.setSize(timeDomainSize());
     m_deconvolution.setWindowFunctionType(m_windowFunctionType);
-    m_delayFinder.setSize(pow(2, 16));
+    m_delayFinder.setSize(DELAY_FINDER_SIZE);
     m_delayFinder.setWindowFunctionType(m_windowFunctionType);
     m_impulseData.resize(timeDomainSize());
     m_deconvLPFs.resize(timeDomainSize());
@@ -426,6 +427,14 @@ void Measurement::setActive(bool newActive)
 
     updateAudio();
 
+    if (!newActive) {
+        m_delayFinderCollecting = false;
+        m_delayFinderCounter = 0;
+        if (m_estimatedValid.exchange(false)) {
+            emit estimatedChanged();
+        }
+    }
+
     m_levelMeters.reset();
     m_loopBuffer.reset();
     emit levelChanged();
@@ -554,6 +563,21 @@ void Measurement::transform()
     float d, r;
     auto filterM = m_inputFilters.first;
     auto filterR = m_inputFilters.second;
+    const float currentReferenceLevel = referenceLevel();
+    const bool delayFinderShouldCollect = std::isfinite(currentReferenceLevel)
+            && currentReferenceLevel >= DELAY_ESTIMATION_MIN_REFERENCE_LEVEL_DB;
+
+    if (delayFinderShouldCollect != m_delayFinderCollecting) {
+        m_delayFinderCollecting = delayFinderShouldCollect;
+        m_delayFinderCounter = 0;
+        if (m_delayFinderCollecting) {
+            // 無音時の古い解析窓を再利用せず、有効な基準信号だけで推定し直す。
+            m_delayFinder.reset();
+        }
+        if (m_estimatedValid.exchange(false)) {
+            emit estimatedChanged();
+        }
+    }
 
     while (m_data.collected() > 0 && m_reference.collected() > 0) {
         d = m_data.read();
@@ -568,13 +592,18 @@ void Measurement::transform()
 
         m_dataFT.add(d, r);
         m_deconvolution.add(d, r);
-        m_delayFinder.add(d, r);
+        if (m_delayFinderCollecting) {
+            m_delayFinder.add(d, r);
+        }
     }
     m_dataFT.transform();
     m_deconvolution.transform(&m_dataFT);
-    if ((++m_delayFinderCounter % 25) == 0) {
+    if (m_delayFinderCollecting && (++m_delayFinderCounter % 25) == 0) {
         m_delayFinder.transform(nullptr);
         m_delayFinderCounter = 0;
+        if (!m_estimatedValid.exchange(true)) {
+            emit estimatedChanged();
+        }
     }
     averaging();
     unlock();
@@ -665,7 +694,7 @@ void Measurement::averaging()
         }
         m_impulseData[j].time  = t * kt;//ms
     }
-    if (m_estimatedDelay != m_delayFinder.maxIndex()) {
+    if (m_delayFinderCollecting && m_estimatedDelay != m_delayFinder.maxIndex()) {
         m_estimatedDelay = m_delayFinder.maxIndex();
         emit estimatedChanged();
     }
@@ -775,6 +804,10 @@ long Measurement::estimatedDelta() const noexcept
         return m_estimatedDelay - m_delayFinder.size();
     }
     return m_estimatedDelay;
+}
+bool Measurement::estimatedValid() const noexcept
+{
+    return m_estimatedValid.load();
 }
 bool Measurement::calibration() const noexcept
 {

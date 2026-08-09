@@ -111,6 +111,11 @@ void DataBridge::onReadyRead()
         payload["referenceLevel"] = finiteOrNull(measurement->referenceLevel());
         payload["measurementPeak"] = finiteOrNull(measurement->measurementPeak());
         payload["referencePeak"] = finiteOrNull(measurement->referencePeak());
+        payload["delay"] = measurement->delay();
+        payload["estimatedDelay"] = measurement->estimatedValid()
+                ? QJsonValue(static_cast<double>(measurement->estimated()))
+                : QJsonValue();
+        payload["sampleRate"] = static_cast<double>(measurement->sampleRate());
         emit levelUpdated(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
     }
 }
