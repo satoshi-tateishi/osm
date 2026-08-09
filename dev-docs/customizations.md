@@ -454,3 +454,11 @@
 - `QSet<int>`はQWebChannelでJSON化できないため、既存の`setChannels(QList<QVariant>)`と`channelsChangedQList`を使う`QVariantList channelsList`プロパティを`Generator`へ追加した。
 - Pink Noiseの固定表示は廃止したが、信号タイプは画面に出さず、パネル初期化時に内部の`generator.type`をPinkへ強制する既存方針を維持した。
 - TypeScript/ViteとQt本体のビルド後、開発サーバー版をCDPで開き、2行×3列の要素順、出力インターフェース3件、Pink表示なし、チェック変更時のサマリー`Ch: 1, 2`↔`Ch: 2`同期、インターフェース切替時のポート一覧更新と元設定への復元、QWebChannel接続を確認した。安全のためGeneratorはOFFのままとし、実音出しとQML側からの逆方向同期は未確認。`OSM_JS_FRONTEND`未設定の通常UIも短時間継続起動した。
+
+### Phase 11完了(Groupツリーの再帰表示、Stored専用)
+
+`src/chart/sourcetreebridge.h/.cpp`、`web/src/sourceTree.ts`
+
+- `SourceTreeBridge`がルートだけでなく各`Source::Group`内の`sourceList()`も再帰的に購読し、Group内での追加・削除や各アイテムのname/color/active変更をSession Dataへ反映するようにした。ツリーJSONは深さ優先順で、各項目に0始まりの`depth`と、直上Groupを示す`parentUuid`(トップレベルは`null`)を追加した。グループ移動に伴う再購読では`Qt::UniqueConnection`によりシグナル接続の重複を防ぐ。
+- Web側は折りたたみを設けず全階層を常時表示し、`depth`ごとに1remずつ行をインデントする。
+- 測定ソースは意図的にグループ化不可のままとする。測定ソースは通常4〜8個程度で増え続けない一方、STOREデータは継続的に増えるため、階層整理が必要なのはStored側のみである。既存の`SourceList::isGroupableData()`がGroupへ格納可能な型をStored/Groupに制限しているため、当初検討した`DataBridge`のGroup再帰対応は不要であり、Transfer Functionとチャート配信はトップレベルMeasurement専用のまま変更していない。

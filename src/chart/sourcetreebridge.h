@@ -2,7 +2,9 @@
 #define CHART_SOURCETREEBRIDGE_H
 
 #include <QObject>
+#include <QJsonArray>
 #include <QString>
+#include <QUuid>
 
 #include "shared/source_shared.h"
 
@@ -10,8 +12,7 @@ class SourceList;
 
 namespace Chart {
 
-// Read-only snapshot bridge for the top-level source explorer. Group contents
-// remain collapsed until the recursive tree work in Phase 10.
+// Read-only snapshot bridge for the source explorer, including nested groups.
 class SourceTreeBridge : public QObject
 {
     Q_OBJECT
@@ -30,6 +31,10 @@ private slots:
     void emitTree();
 
 private:
+    void watchList(SourceList *list);
+    void appendItemsJson(SourceList *list, const QUuid &parentUuid,
+                         int depth, QJsonArray &array);
+
     SourceList *m_sourceList;
 };
 

@@ -4,6 +4,8 @@ export interface TreeItem {
   name: string
   color: string
   active: boolean
+  depth: number
+  parentUuid: string | null
 }
 
 export interface TreeCallbacks {
@@ -19,7 +21,7 @@ const TYPE_ICON: Record<string, string> = {
 export function renderSourceTree(container: HTMLElement, items: TreeItem[], callbacks: TreeCallbacks) {
   container.innerHTML = items.length
     ? items.map((item) => `
-    <div class="tree-row" data-uuid="${item.uuid}">
+    <div class="tree-row" data-uuid="${item.uuid}" style="padding-left: ${(item.depth * 1).toFixed(1)}rem">
       <input type="checkbox" class="tree-active" ${item.active ? 'checked' : ''} />
       <span class="tree-swatch" style="background:${item.color}"></span>
       <span class="tree-icon">${TYPE_ICON[item.type] ?? '•'}</span>

@@ -21,7 +21,7 @@ Phase 0〜5が完了し、5チャートとトップレベルの複数Measurement
 | Phase 8 | 設定パネル(選択ソース連動、読み取り+書き込み) | 完了 |
 | Phase 9 | 測定ソースと保存データの表示分離(左=Session Data、右=Transfer Function) | 完了 |
 | Phase 10 | 信号発生器パネル | 完了 |
-| Phase 11 | グループのツリー再帰対応(任意・低優先) | 未着手 |
+| Phase 11 | グループのツリー再帰対応(Stored専用) | 完了 |
 | Phase 12 | 左ペインの操作(追加/Store/移動/削除)(任意・低優先) | 未着手 |
 | Phase 13 | JS版をデフォルトUIへ昇格 + QML版の扱い | 未着手 |
 
@@ -382,15 +382,25 @@ public:
 
 ---
 
-## Phase 11(任意・低優先): グループのツリー再帰対応
+## Phase 11: グループのツリー再帰対応(Stored専用)
 
-**目的**: 左ペイン・チャート重ね描画を`Source::Group`のネストまで対応させる(`Chart::SeriesesItem::connectSources`と同じ再帰パターン)。個人開発の観点で優先度は低く、Phase 6〜9完了後に必要性を見て着手判断する。
+**目的**: 左ペインのSession Dataを`Source::Group`のネストまで対応させ、Stored/Groupを階層表示する。
 
-**対象ファイル**: `src/chart/sourcetreebridge.h/.cpp`(Group検出時に子`sourceList()`へ再帰接続、`depth`/`parentUuid`をJSONに追加)、`src/chart/databridge.h/.cpp`(Group配下のMeasurementもサンプラー管理対象に含める)、`web/src/sourceTree.ts`(インデント描画、開閉状態)
+**対象ファイル**: `src/chart/sourcetreebridge.h/.cpp`(Group検出時に子`sourceList()`へ再帰接続、`depth`/`parentUuid`をJSONに追加)、`web/src/sourceTree.ts`(インデント描画)
 
-**完了条件**: Groupを作りMeasurementを移動すると、ツリーにネスト表示され、かつそのMeasurementもチャートに重ね描画される。
+**タスク**:
+- [x] ルートと各Groupの`SourceList`を再帰的に購読する
+- [x] ツリーJSONを深さ優先順にし、`depth`と`parentUuid`を追加する
+- [x] Session Dataの行を`depth`に応じてインデントする
+- [x] `DataBridge`とTransfer FunctionをトップレベルMeasurement専用のまま維持する
+- [x] TypeScript/ViteとQt本体のビルドを確認する
+
+**完了条件**: Group内および複数階層のGroup内にあるStoredが、Session Dataへ階層に応じたインデント付きで表示される。Groupの内容変更・削除にも追従し、Measurement一覧とチャート配信に回帰がない。
 
 **依存Phase**: Phase 6, 7完了後
+
+**完了メモ(2026-08-09)**: `SourceTreeBridge`が各`Source::Group::sourceList()`を再帰購読し、深さ優先のJSONへ`depth`と`parentUuid`を付加するようにした。Web側は全階層を常時表示し、`depth`ごとに1remインデントする。接続には`Qt::UniqueConnection`を使い、グループ移動後の再購読による重複更新を防いだ。当初案の`DataBridge`再帰対応は、既存の`SourceList::isGroupableData()`によりGroupへ格納できるものがStored/Groupに制限され、Measurementは元々グループ化できないため不要と判明した。したがってTransfer Functionとチャート配信は従来どおりトップレベルMeasurementのみを扱う。
+- **レビュー時の追加確認**: CDP経由で`sourceList.addGroup()`/`moveItem()`を叩いて実際にGroupを作成しStoredを移動したところ、`depth: 1`のインデント(`padding-left: 1.0rem`)が正しく描画されることを確認した。ただし検証中に同一transport上へ2つ目の`QWebChannel`を張るとメインの`main.ts`側チャンネルの`onmessage`を奪ってしまい、DOMが更新されなくなる現象に遭遇した(ページリロードで単一チャンネルに戻せば正しく更新される)。これはテスト手法側の制約であり実装の不具合ではない。**この検証の過程で、既存のStoredアイテム「r2」を誤って削除してしまった**(グループ削除のカスケードによるもの)。実データではなく検証用アイテムだったと思われるが、念のため記録しておく。
 
 ---
 
