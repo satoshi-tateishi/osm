@@ -23,7 +23,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
-#include <functional>
 
 #include "common/wavfile.h"
 #include "filtersource.h"
@@ -261,22 +260,36 @@ void SourceList::moveToGroup(QUuid targetId, QUuid groupId) noexcept
     }
 }
 
-bool SourceList::removeItemFromTree(const Shared::Source &item) noexcept
+bool SourceList::removeItemFromTree(const Shared::Source &item, bool deleteItem) noexcept
 {
     for (int i = 0; i < m_items.size(); ++i) {
         if (m_items.at(i) == item) {
-            removeItem(item, false);
+            removeItem(item, deleteItem);
             return true;
         }
     }
     for (auto &child : m_items) {
         if (auto group = std::dynamic_pointer_cast<Source::Group>(child)) {
-            if (group->sourceList()->removeItemFromTree(item)) {
+            if (group->sourceList()->removeItemFromTree(item, deleteItem)) {
                 return true;
             }
         }
     }
     return false;
+}
+
+void SourceList::removeMultiSelected() noexcept
+{
+    QList<QUuid> targets = m_multiSelected;
+    for (auto &uuid : targets) {
+        if (auto item = getByUUid(uuid)) {
+            removeItemFromTree(item, true);
+        }
+    }
+    if (!m_multiSelected.isEmpty()) {
+        m_multiSelected.clear();
+        emit multiSelectedChanged();
+    }
 }
 
 void SourceList::moveItem(QUuid itemId, QUuid targetGroupId) noexcept
@@ -338,25 +351,6 @@ bool SourceList::isDataSource(const Shared::Source &item) noexcept
 {
     static const QSet<QString> dataTypeNames = {"Stored", "Group", "RemoteStored", "RemoteGroup"};
     return item && dataTypeNames.contains(item->objectName());
-}
-
-QVariantList SourceList::groupList() const noexcept
-{
-    QVariantList result;
-    std::function<void(const SourceList *, int)> collect = [&](const SourceList * list, int depth) {
-        for (auto &item : list->m_items) {
-            if (auto group = std::dynamic_pointer_cast<Source::Group>(item)) {
-                QVariantMap entry;
-                entry["uuid"]  = group->uuid().toString();
-                entry["name"]  = group->name();
-                entry["depth"] = depth;
-                result.append(entry);
-                collect(group->sourceList(), depth + 1);
-            }
-        }
-    };
-    collect(this, 0);
-    return result;
 }
 
 int SourceList::indexOf(const Shared::Source &item) const noexcept
@@ -1032,9 +1026,30 @@ void SourceList::appendItem(const Shared::Source &item, bool autocolor)
     if (autocolor) {
         item->setColor(nextColor());
     }
+    item->setName(uniqueName(item->name()));
     m_items.append(item);
     emit postItemAppended(item);
     emit countChanged();
+}
+
+QString SourceList::uniqueName(const QString &baseName) const noexcept
+{
+    QString candidate = baseName;
+    int suffix = 1;
+    bool collided;
+    do {
+        collided = false;
+        for (const auto &existing : m_items) {
+            if (existing && existing->name() == candidate) {
+                collided = true;
+                break;
+            }
+        }
+        if (collided) {
+            candidate = QStringLiteral("%1_copy-%2").arg(baseName).arg(++suffix);
+        }
+    } while (collided);
+    return candidate;
 }
 
 void SourceList::takeItem(Shared::Source item)

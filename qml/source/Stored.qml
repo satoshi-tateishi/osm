@@ -28,17 +28,28 @@ Item {
     property bool chartable : true;
     property bool highlight : false;
     property string propertiesQml: "qrc:/source/StoredProperties.qml"
+    //true when an enclosing Group's own checkbox is off: greys out the checkbox color below
+    //without touching this item's own checked state, so it's visually clear it belongs to a
+    //currently-inactive Group
+    property bool dimmed: false
     height: 50
     width: parent.width
 
     RowLayout {
         width: parent.width
 
+        //keeps this checkbox aligned with a sibling Group's checkbox, which is pushed right by
+        //its disclosure arrow (see Group.qml) -- this row has no arrow of its own, so it reserves
+        //the same width instead
+        Item {
+            Layout.preferredWidth: 16
+        }
+
         MulticolorCheckBox {
             id: checkbox
             Layout.alignment: Qt.AlignVCenter
 
-            checkedColor: (dataModelData ? dataModelData.color : "")
+            checkedColor: dimmed ? "grey" : (dataModelData ? dataModelData.color : "")
 
             onCheckStateChanged: {
                 dataModelData.active = checked
@@ -62,7 +73,7 @@ Item {
         Connections {
             target: dataModelData
             function onColorChanged() {
-                checkbox.data.checkedColor = dataModelData.color;
+                checkbox.data.checkedColor = dimmed ? "grey" : dataModelData.color;
             }
         }
     }

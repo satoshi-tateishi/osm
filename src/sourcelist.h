@@ -84,13 +84,13 @@ public:
     Q_INVOKABLE bool move(int from, int to) noexcept;
     Q_INVOKABLE void moveToGroup(QUuid targetId, QUuid groupId) noexcept;
     Q_INVOKABLE void moveItem(QUuid itemId, QUuid targetGroupId) noexcept;
-    Q_INVOKABLE QVariantList groupList() const noexcept;
     Q_INVOKABLE int indexOf(const Shared::Source &item) const noexcept;
     Q_INVOKABLE int indexOf(const QUuid &id) const noexcept;
 
     Q_INVOKABLE void setMultiSelected(const QUuid &uuid, bool selected) noexcept;
     Q_INVOKABLE bool isMultiSelected(const QUuid &uuid) const noexcept;
     Q_INVOKABLE void clearMultiSelected() noexcept;
+    Q_INVOKABLE void removeMultiSelected() noexcept;
     Q_INVOKABLE bool exportSelectedCSV(const QUrl &destination) const noexcept;
     int multiSelectedCount() const noexcept;
     int multiSelectedStoredCount() const noexcept;
@@ -178,10 +178,11 @@ private:
     template<typename T, typename... Ts> Shared::Source add(Ts...);
     bool importFile(const QUrl &fileName, QString separator);
     void appendItemsFrom(const SourceList *list, QUuid filter, bool unrollGroups, bool excludeData = false);
+    QString uniqueName(const QString &baseName) const noexcept;
 
     static bool isGroupableData(const Shared::Source &item) noexcept;
     static bool isDataSource(const Shared::Source &item) noexcept;
-    bool removeItemFromTree(const Shared::Source &item) noexcept;
+    bool removeItemFromTree(const Shared::Source &item, bool deleteItem = false) noexcept;
     bool findGroupPath(const Shared::Source &target, QStringList &path) const noexcept;
     void collectStoredTargets(const Shared::Source &src, QSet<QUuid> &out) const noexcept;
     QSet<QUuid> collectAllStoredTargets() const noexcept;

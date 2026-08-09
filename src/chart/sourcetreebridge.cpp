@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
+#include <functional>
 
 #include "abstract/source.h"
 #include "src/source/group.h"
@@ -92,6 +93,53 @@ void SourceTreeBridge::setActive(const QString &uuid, bool active)
     if (source) {
         source->setActive(active);
     }
+}
+
+bool SourceTreeBridge::setName(const QString &uuidString, const QString &name)
+{
+    const auto trimmed = name.trimmed();
+    if (trimmed.isEmpty()) {
+        return false;
+    }
+
+    const auto uuid = QUuid(uuidString);
+    auto source = m_sourceList->getByUUid(uuid);
+    if (!source) {
+        return false;
+    }
+    if (trimmed == source->name()) {
+        return true;
+    }
+
+    std::function<SourceList *(SourceList *)> findOwningList =
+            [&](SourceList *list) -> SourceList * {
+        for (const auto &candidate : list->items()) {
+            if (candidate && candidate->uuid() == uuid) {
+                return list;
+            }
+            if (auto *group = candidate
+                    ? dynamic_cast<Source::Group *>(candidate.get())
+                    : nullptr) {
+                if (auto *found = findOwningList(group->sourceList())) {
+                    return found;
+                }
+            }
+        }
+        return nullptr;
+    };
+
+    auto *owningList = findOwningList(m_sourceList);
+    if (!owningList) {
+        return false;
+    }
+    for (const auto &sibling : owningList->items()) {
+        if (sibling && sibling->uuid() != uuid && sibling->name() == trimmed) {
+            return false;
+        }
+    }
+
+    source->setName(trimmed);
+    return true;
 }
 
 void SourceTreeBridge::storeItem(const QString &uuid)

@@ -470,3 +470,5 @@
 - Session DataのStored/Group行をHTML5 DnD対応にした。Group行は上25%を「直前」、中央50%を「中へ」、下25%を「直後」とし、通常行は上半分/下半分を「直前」/「直後」とする3ゾーン設計である。「直前/直後」は行境界の細い青色バー、「中へ」はGroup行全体の青色枠でプレビューし、画面下部にはルート末尾へ戻す専用ドロップ領域を置いた。
 - 既存`SourceList::move()`は、その`SourceList`直下のindexしか操作できず、ルートリストからGroup内部の順序を指定できない。このため`SourceTreeBridge::moveToPosition(uuid, targetParentUuid, index)`を新設し、`targetParentUuid`からGroup自身の`SourceList`を解決したうえで、既存`moveItem()`による型妥当性・循環チェック付き移動と、移動先リストでの`move()`を連続して行う。Web側のindexは移動元を除去する前の行境界なので、同一リスト内の下方向移動だけ1減算して挿入バーと実際の位置を一致させる。追加・削除通知だけでは最後の`move()`後の順序がWebへ届かないため、ルートと各Groupの`postItemMoved`も購読して最終ツリーを再配信する。
 - Session Dataに`+ Group`と確認ダイアログ付き削除ボタン、Transfer Functionに`+ Measurement`を追加し、WebChannelへ公開済みのルート`sourceList`を呼び出す。Groupの祖先のいずれかが非アクティブなら、子孫のチェック状態自体は変えずチェックボックスだけをグレー表示する。
+- Session Dataの各行へ名前編集ボタンを追加し、名前のダブルクリックでも編集できるようにした。Web側ではツリー全体の同名を拒否し、バックエンドの`SourceTreeBridge::setName()`でも同じ階層の兄弟間に重複がないことを防御的に検査する。祖先Groupが非アクティブな子孫は、チェックボックスに加えてデータ名もグレー表示する。
+- `SourceList::appendItem()`で追加先リストの兄弟名を検査し、衝突時は元の名前へ`_copy-2`、`_copy-3`…を自動付与する。Store・複製だけでなく全追加経路に共通で適用されるため、既存セッションに同一階層の重複名が含まれる場合も、読み込み時に同じ規則で自動リネームされる。

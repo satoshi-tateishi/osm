@@ -416,6 +416,9 @@ public:
 - [x] Stored/GroupをDnDで直前・直後・Group内へ移動できるようにする
 - [x] ドラッグ中の挿入位置バーとGroup格納ハイライトを表示する
 - [x] 非アクティブな祖先Group配下のチェックボックスを状態変更せずグレー表示する
+- [x] 名前編集UIとツリー全体の重複チェックを追加する
+- [x] 追加時の兄弟間重複名を`_copy-N`付きで自動調整する
+- [x] 非アクティブな祖先Group配下のデータ名もグレー表示する
 - [x] TypeScript/ViteとQt本体のビルドを確認する
 
 **完了条件**: JS左ペインだけで、Measurement追加→Store(スナップショット化)→Groupへ移動→削除、が一通り行える。
@@ -423,6 +426,9 @@ public:
 **依存Phase**: Phase 6完了後、Phase 11(Group移動を含む場合)
 
 **完了メモ(2026-08-09)**: Session Dataへ`+ Group`・削除確認付きボタン・HTML5 DnDを追加し、Transfer Functionへ`+ Measurement`を追加した。行内のマウス位置は、Groupでは上25%=`before`、中央50%=`into`、下25%=`after`、それ以外では上下50%の`before`/`after`として判定する。`before`/`after`は細い青色の挿入バー、`into`はGroup行全体の枠線で移動先を示す。ルート末尾へ戻す専用ドロップ領域も設けた。既存`SourceList::move()`は呼び出したリスト直下の並び替えしかできず、Group内部をルートの`sourceList`経由では並び替えられないため、`SourceTreeBridge::moveToPosition(uuid, targetParentUuid, index)`を新設した。このメソッドは対象Groupの`SourceList`を解決し、既存`moveItem()`で妥当性・循環を検査しながら移動した後、指定位置へ並べ直す。同一階層内で下方向へ動かす場合は、移動元を除去する前の境界indexが1つずれるため補正する。並び替え後の最終順序をJSへ確実に配信するため、各リストの`postItemMoved`も再帰購読する。祖先Groupが非アクティブな子孫はチェック状態を保持したまま視覚的にグレー表示する。
+
+**追加修正(2026-08-09)**: Session Dataの各行に編集ボタンを追加し、データ名のダブルクリックでもインライン編集を開始できるようにした。Enterまたはフォーカス移動で確定し、Escapeでキャンセルする。Web側は全階層で同名を拒否し、`SourceTreeBridge::setName()`も同じ階層の兄弟名を検査する。`SourceList::appendItem()`を通る追加では兄弟名が衝突した場合に`_copy-2`以降を自動付与する。非アクティブな祖先Group配下ではチェックボックスに加えてデータ名もグレー表示する。
+- **レビュー時の追加確認**: `window.alert`を差し替えたCDP操作で、重複名への変更試行時にアラートが出て名前が変更されないこと、ユニークな名前への変更は即座に反映されること、`_copy-N`の自動付与が実際にStore連投で発生していた重複表示(`Measure @ 13:08`が2件)を解消することを確認した。Group非アクティブ時の配下データ名グレー表示(`tree-name-masked`)もチェックボックスと同時に付与されることを確認した。「+ Measurement」を複数回押した際もMeasurement名の重複が自動的に`_copy-N`されることを実機で確認した(`appendItem`の一元的な適用範囲がMeasurementにも及ぶことの実例)。
 
 ---
 

@@ -22,6 +22,7 @@ public:
     Q_INVOKABLE void setActive(const QString &uuid, bool active);
     Q_INVOKABLE void storeItem(const QString &uuid);
     Q_INVOKABLE void requestTree();
+    Q_INVOKABLE bool setName(const QString &uuid, const QString &name);
     Q_INVOKABLE void moveToPosition(const QString &uuid,
                                     const QString &targetParentUuid,
                                     int index);

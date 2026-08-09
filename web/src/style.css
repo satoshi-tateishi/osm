@@ -131,8 +131,32 @@ body {
   filter: grayscale(1);
 }
 
+.tree-name-masked {
+  opacity: 0.35;
+}
+
+.tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-rename {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+
+.tree-rename:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
 .tree-delete {
-  margin-left: auto;
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.4);
@@ -143,6 +167,18 @@ body {
 
 .tree-delete:hover {
   color: #f44336;
+}
+
+.tree-name-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #111;
+  color: #fff;
+  border: 1px solid #2196f3;
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  font-size: inherit;
+  font-family: inherit;
 }
 
 .tree-drop-root {

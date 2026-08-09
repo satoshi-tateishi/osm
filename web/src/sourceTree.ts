@@ -13,6 +13,7 @@ export interface TreeCallbacks {
   onMove: (uuid: string, targetParentUuid: string, index: number) => void
   onDelete: (uuid: string) => void
   onAddGroup: () => void
+  onRename: (uuid: string, name: string) => void
 }
 
 const TYPE_ICON: Record<string, string> = {
@@ -43,15 +44,19 @@ export function renderSourceTree(container: HTMLElement, items: TreeItem[], call
   }
 
   const rowsHtml = items.length
-    ? items.map((item) => `
+    ? items.map((item) => {
+        const masked = isMaskedByAncestor(item, byUuid)
+        return `
       <div class="tree-row" draggable="true" data-uuid="${item.uuid}" data-type="${item.type}" data-parent="${item.parentUuid ?? ''}" style="padding-left: ${(item.depth * 1).toFixed(1)}rem">
-        <input type="checkbox" class="tree-active${isMaskedByAncestor(item, byUuid) ? ' tree-checkbox-masked' : ''}" ${item.active ? 'checked' : ''} />
+        <input type="checkbox" class="tree-active${masked ? ' tree-checkbox-masked' : ''}" ${item.active ? 'checked' : ''} />
         <span class="tree-swatch" style="background:${item.color}"></span>
         <span class="tree-icon">${TYPE_ICON[item.type] ?? '•'}</span>
-        <span class="tree-name${item.active ? '' : ' tree-inactive'}">${escapeHtml(item.name)}</span>
+        <span class="tree-name${item.active ? '' : ' tree-inactive'}${masked ? ' tree-name-masked' : ''}" data-name>${escapeHtml(item.name)}</span>
+        <button type="button" class="tree-rename" title="Rename" data-rename>&#9998;</button>
         <button type="button" class="tree-delete" title="Delete" data-delete>&times;</button>
       </div>
-    `).join('')
+    `
+      }).join('')
     : '<p class="placeholder">保存データがありません</p>'
 
   container.innerHTML = `
@@ -74,7 +79,55 @@ export function renderSourceTree(container: HTMLElement, items: TreeItem[], call
 
   function clearDropIndicators() {
     dropBar.hidden = true
-    container.querySelectorAll('.tree-drop-target').forEach((element) => element.classList.remove('tree-drop-target'))
+    listEl.querySelectorAll('.tree-drop-target').forEach((element) => element.classList.remove('tree-drop-target'))
+  }
+
+  function startRename(row: HTMLElement, item: TreeItem) {
+    const nameSpan = row.querySelector<HTMLElement>('[data-name]')
+    if (!nameSpan) {
+      return
+    }
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'tree-name-edit'
+    input.value = item.name
+    nameSpan.replaceWith(input)
+    input.focus()
+    input.select()
+
+    let settled = false
+    function restore() {
+      if (settled) {
+        return
+      }
+      settled = true
+      input.replaceWith(nameSpan!)
+    }
+    function commit() {
+      if (settled) {
+        return
+      }
+      const newName = input.value.trim()
+      restore()
+      if (!newName || newName === item.name) {
+        return
+      }
+      const duplicate = items.some((other) => other.uuid !== item.uuid && other.name === newName)
+      if (duplicate) {
+        alert('同じ名前では保存できません')
+        return
+      }
+      callbacks.onRename(item.uuid, newName)
+    }
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        commit()
+      } else if (event.key === 'Escape') {
+        restore()
+      }
+    })
+    input.addEventListener('blur', commit)
   }
 
   container.querySelectorAll<HTMLElement>('.tree-row').forEach((row) => {
@@ -90,6 +143,8 @@ export function renderSourceTree(container: HTMLElement, items: TreeItem[], call
         callbacks.onDelete(uuid)
       }
     })
+    row.querySelector('[data-rename]')?.addEventListener('click', () => startRename(row, item))
+    row.querySelector('[data-name]')?.addEventListener('dblclick', () => startRename(row, item))
 
     row.addEventListener('dragstart', (event) => {
       event.dataTransfer?.setData('text/plain', uuid)

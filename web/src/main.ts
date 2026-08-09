@@ -107,6 +107,13 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
       onMove: (uuid, targetParentUuid, index) => sourceTree.moveToPosition(uuid, targetParentUuid, index),
       onDelete: (uuid) => sourceList.removeItem(uuid, true),
       onAddGroup: () => sourceList.addGroup(),
+      onRename: (uuid, name) => {
+        sourceTree.setName(uuid, name, (success: boolean) => {
+          if (!success) {
+            alert('同じ名前では保存できません')
+          }
+        })
+      },
     })
     renderMeasurementList(measurementListEl, measurementItems, {
       onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
