@@ -46,6 +46,7 @@
 #include "remote/server.h"
 #include "remote/remoteclient.h"
 #include "chart/meterplot.h"
+#include "chart/globalaverage.h"
 #include "chart/globalsmoothing.h"
 
 #ifdef GRAPH_METAL
@@ -91,6 +92,7 @@ int main(int argc, char *argv[])
     Settings settings;
     Appearance appearence(&settings);
     Chart::GlobalSmoothing globalSmoothing(&settings);
+    Chart::GlobalAverage globalAverage(&settings);
     audio::Client::getInstance();
     auto generator = std::make_shared<Generator>(settings.getGroup("generator"));
     Shared::SourceList sourceList = std::make_shared<SourceList>();
@@ -154,7 +156,7 @@ int main(int argc, char *argv[])
     std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
     if (!jsFrontendDisabled) {
         jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
-            sourceList.get(), generator.get(), &globalSmoothing,
+            sourceList.get(), generator.get(), &globalSmoothing, &globalAverage,
             qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
 
         if (!qmlFrontendRequested) {

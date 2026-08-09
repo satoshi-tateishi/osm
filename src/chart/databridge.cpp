@@ -5,19 +5,23 @@
 #include <QJsonObject>
 
 #include "abstract/source.h"
+#include "globalaverage.h"
 #include "globalsmoothing.h"
 #include "src/source/measurement.h"
 #include "src/sourcelist.h"
 
 namespace Chart {
 
-DataBridge::DataBridge(SourceList *sourceList, GlobalSmoothing *globalSmoothing, QObject *parent)
-    : QObject(parent), m_sourceList(sourceList), m_globalSmoothing(globalSmoothing)
+DataBridge::DataBridge(SourceList *sourceList, GlobalSmoothing *globalSmoothing, GlobalAverage *globalAverage,
+                       QObject *parent)
+    : QObject(parent), m_sourceList(sourceList), m_globalSmoothing(globalSmoothing), m_globalAverage(globalAverage)
 {
     connect(m_sourceList, &SourceList::postItemAppended, this, &DataBridge::onItemAppended);
     connect(m_sourceList, &SourceList::preItemRemoved, this, &DataBridge::onItemRemoved);
     connect(m_globalSmoothing, &GlobalSmoothing::pointsPerOctaveChanged, this,
             &DataBridge::onGlobalPointsPerOctaveChanged);
+    connect(m_globalAverage, &GlobalAverage::secondsChanged, this,
+            &DataBridge::onGlobalAverageSecondsChanged);
 
     for (const auto &item : m_sourceList->items()) {
         onItemAppended(item);
@@ -46,6 +50,7 @@ void DataBridge::onItemAppended(const Shared::Source &item)
     samplers->rta.setSource(item);
     samplers->spectrogram.setSource(item);
     m_samplers.insert(uuid, samplers);
+    applyGlobalAverage(item, m_globalAverage->seconds());
 
     connect(item.get(), &Abstract::Source::readyRead, this, &DataBridge::onReadyRead);
 }
@@ -117,6 +122,25 @@ void DataBridge::onGlobalPointsPerOctaveChanged(unsigned int pointsPerOctave)
     for (auto *samplers : qAsConst(m_samplers)) {
         emitCurves(samplers, pointsPerOctave);
     }
+}
+
+void DataBridge::onGlobalAverageSecondsChanged(unsigned int seconds)
+{
+    // 個別測定のAverage設定より常にグローバル値を優先する(Global Smoothingと同じ方針)。
+    for (const auto &item : m_sourceList->items()) {
+        applyGlobalAverage(item, seconds);
+    }
+}
+
+void DataBridge::applyGlobalAverage(const Shared::Source &item, unsigned int seconds)
+{
+    auto *measurement = dynamic_cast<Measurement *>(item.get());
+    if (!measurement) {
+        return;
+    }
+    auto count = static_cast<unsigned int>(std::lround(seconds / Measurement::averageTickSeconds()));
+    measurement->setAverageType(Meta::Measurement::AverageType::FIFO);
+    measurement->setAverage(count);
 }
 
 void DataBridge::emitCurves(SamplerSet *samplers, unsigned int pointsPerOctave)

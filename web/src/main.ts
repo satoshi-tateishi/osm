@@ -7,6 +7,7 @@ import { closeSettingsPopover, getOpenSettingsUuid, getSettingsPopoverContentIfO
 import { channelReady, connectWebChannel } from './webchannel'
 import { setupGeneratorPanel } from './generatorPanel'
 import { setupSmoothingPanel } from './smoothingPanel'
+import { setupAveragePanel } from './averagePanel'
 import { setupSpectrogramThresholds } from './spectrogramThresholds'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -36,8 +37,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div id="measurement-list"></div>
     </div>
     <div class="pane-right-smoothing">
-      <h2>Smoothing</h2>
-      <div id="smoothing-panel"></div>
+      <div class="pane-right-smoothing-half">
+        <h2>Smoothing</h2>
+        <div id="smoothing-panel"></div>
+      </div>
+      <div class="pane-right-smoothing-half">
+        <h2>Average</h2>
+        <div id="average-panel"></div>
+      </div>
     </div>
     <div class="pane-right-generator">
       <h2>Generator</h2>
@@ -50,6 +57,7 @@ const sourceTreeEl = document.querySelector<HTMLDivElement>('#source-tree')!
 const measurementListEl = document.querySelector<HTMLDivElement>('#measurement-list')!
 const generatorPanelEl = document.querySelector<HTMLDivElement>('#generator-panel')!
 const smoothingPanelEl = document.querySelector<HTMLDivElement>('#smoothing-panel')!
+const averagePanelEl = document.querySelector<HTMLDivElement>('#average-panel')!
 const centerPaneEl = document.querySelector<HTMLDivElement>('.pane-center')!
 const canvases: charts.ChartCanvases = {
   magnitude: document.querySelector<HTMLCanvasElement>('#chart-magnitude')!,
@@ -84,7 +92,7 @@ setupSpectrogramThresholds(spectrogramThresholdsEl, (lower, upper) => {
 
 connectWebChannel((message) => { statusEl.textContent = message })
 
-channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, sourceList, globalSmoothing }) => {
+channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, sourceList, globalSmoothing, globalAverage }) => {
   let currentSettingsUuid: string | null = null
 
   function renderPanel(payload: SettingsPayload) {
@@ -210,4 +218,5 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
 
   setupGeneratorPanel(generatorPanelEl, generator, outputDevices)
   setupSmoothingPanel(smoothingPanelEl, globalSmoothing)
+  setupAveragePanel(averagePanelEl, globalAverage)
 })

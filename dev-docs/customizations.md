@@ -621,3 +621,21 @@
 
 - チャートの並びをMagnitude, RTA, Spectrogram, Phase, Coherenceから、Magnitude, Phase, Coherence, RTA, Spectrogramの順に変更した(ユーザー要望)。`main.ts`のHTMLテンプレート内のブロック順序を入れ替えるのみで、各チャートの実装・データフローに変更はない。
 - macOS実機で表示順がMagnitude→Phase→Coherence→RTA→Spectrogramになっていることをスクリーンショットで確認した。
+
+### Phase 28完了(JS版に測定時間のグローバルAverage設定を追加)
+
+`src/chart/globalaverage.h`/`.cpp`(新規)、`src/chart/databridge.h`/`.cpp`、`src/chart/jsfrontendmanager.h`/`.cpp`、`src/main.cpp`、`OpenSoundMeter.pro`、`web/src/averagePanel.ts`(新規)、`web/src/webchannel.ts`、`web/src/main.ts`、`web/src/style.css`
+
+- QML版には「Average」に対応するグローバル設定(Global Smoothingのような仕組み)が存在せず、各測定ごとの個別Average設定(タイプ・カウント、`src/source/measurement.h`の`average`/`averageType`)のみが存在する。ユーザーの要望を受け、JS版専用の新規機能として`Chart::GlobalAverage`(`globalsmoothing.h/.cpp`と同じシングルトンパターン、Q_PROPERTY `unsigned int seconds`、既定値2、設定キー`globalAverage`)を追加した。
+- 値は秒単位(1〜4s、1s刻み)で、内部的には`Measurement::averageTickSeconds()`(`TIMER_INTERVAL/1000`=0.08s)で割ってFIFOカウントに変換し(`std::lround(seconds / averageTickSeconds())`)、`Measurement::setAverageType(FIFO)`+`setAverage(count)`を呼ぶ。
+- ユーザーとの相談の結果、個別測定のAverage設定より常にグローバル値を優先する方針とした(Global Smoothingと同じ挙動)。`DataBridge`が`GlobalAverage::secondsChanged`を購読し、値が変わるたびに保持中の全アクティブソースへ再適用する(`onGlobalAverageSecondsChanged()`)。また新しい測定ソースが追加された際(`onItemAppended()`)にも現在のグローバル値を適用する。個別のSettingsポップオーバーのAverage欄(`settingsPanel.ts`)は表示されたままだが、グローバル値が変わるたびに上書きされる。
+- Web版の右ペインで、既存の「Smoothing」ブロックの幅を半分にし、その右側に同じ幅で「Average」ブロックを追加した(`pane-right-smoothing`をflexコンテナ化し、`pane-right-smoothing-half`を2つ横並びに)。`averagePanel.ts`は`smoothingPanel.ts`と同じ実装パターンで、`<select>`(1s/2s/3s/4s)を`globalAverage.seconds`と双方向に同期する。
+- macOS実機で、Averageのプルダウンが1s〜4s(既定2s)で選択でき、Smoothingと同じ幅で横並びに表示されることを確認した。
+
+### 不具合修正(Generator OFF後、リファレンス無音時にPhaseが0°の直線として表示される)
+
+`src/chart/seriessampler.cpp`
+
+- **不具合報告**: Generatorをオンにしたあとオフにすると、リファレンス入力が無音であるにもかかわらずPhaseチャートに0°の直線が表示され続けた。
+- **原因調査**: CDP経由で`chartData.phaseUpdated`/`coherenceUpdated`の実ペイロードを記録して追跡した(詳細は`feedback_js_frontend_cdp_review_workflow`メモリの手順)。`src/source/measurement.cpp`の`averaging()`は、リファレンスが無音になると位相差`p`(`Complex::polar(bf, af)`)が`0/0`の除算で`NaN`になる。これがAverageType::FIFOの`m_pahseAvg`(`Averaging<Complex>`、`src/math/averaging.cpp`)に蓄積されると、NaNサンプルは合計に加算されない仕様のため、キュー内が全てNaNで埋まると`collected==0`になり、`Averaging<Complex>::value()`は例外的に`Complex(0)`を返す。これを`atan2(0,0)`で角度に変換すると`0.0`という**有限の**値になり、`PhaseSeriesSampler::sampleJson()`の`std::isfinite(degrees)`チェックをすり抜けてしまう。一方Magnitude側は`magnitudeRaw`が常に`0.f`にクランプされるだけで非有限にはならず、`isfinite(magnitudeDb)`チェックも無効値を検出できなかった。実機でのCDP記録により、無音時は全帯域で`phaseDeg`が厳密に`0`になる(`zeroExact:60`)ことを直接確認した。QML版はこの状況をcoherence値に応じたアルファフェード(`phaseseriesrenderer.cpp`)で視覚的にごまかしており、同じ土台のバグを踏んでいるが目立たない。
+- **修正**: `PhaseSeriesSampler::sampleJson()`に帯域ごとのcoherence平均を追加し、`coherenceAvg > 0.05`(かつ有限)であることも有効判定の条件に加えた。CDPでの記録により、無音時は全帯域が正しくnull(直線が表示されない)になり、Generatorオン中は通常通り位相が表示され、オフ後はcoherenceの減衰に応じて段階的にnullへ切り替わる(急に消えるのではなく自然にフェードアウトする)ことを確認した。この修正はQML版のOpenGL描画パイプラインを経由しないため、QML版の表示自体には影響しない。

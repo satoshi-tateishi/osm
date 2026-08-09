@@ -14,6 +14,7 @@ class DataBridge;
 class SourceTreeBridge;
 class SettingsBridge;
 class GlobalSmoothing;
+class GlobalAverage;
 
 // Owns the single persistent JS frontend window and its fixed WebChannel
 // object set. Dynamic source state is transported by bridge signals.
@@ -22,14 +23,15 @@ class JsFrontendManager : public QObject
     Q_OBJECT
 public:
     explicit JsFrontendManager(SourceList *sourceList, Generator *generator,
-                               GlobalSmoothing *globalSmoothing, bool useDevServer,
-                               QObject *parent = nullptr);
+                               GlobalSmoothing *globalSmoothing, GlobalAverage *globalAverage,
+                               bool useDevServer, QObject *parent = nullptr);
     ~JsFrontendManager() override;
 
 private:
     SourceList *m_sourceList;
     Generator *m_generator;
     GlobalSmoothing *m_globalSmoothing;
+    GlobalAverage *m_globalAverage;
     QWebChannel *m_channel;
     QWebEngineView *m_view;
     DataBridge *m_dataBridge;

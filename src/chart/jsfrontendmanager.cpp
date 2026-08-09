@@ -5,6 +5,7 @@
 
 #include "audio/devicemodel.h"
 #include "databridge.h"
+#include "globalaverage.h"
 #include "globalsmoothing.h"
 #include "settingsbridge.h"
 #include "sourcetreebridge.h"
@@ -14,12 +15,12 @@
 namespace Chart {
 
 JsFrontendManager::JsFrontendManager(SourceList *sourceList, Generator *generator,
-                                     GlobalSmoothing *globalSmoothing, bool useDevServer,
-                                     QObject *parent)
+                                     GlobalSmoothing *globalSmoothing, GlobalAverage *globalAverage,
+                                     bool useDevServer, QObject *parent)
     : QObject(parent), m_sourceList(sourceList), m_generator(generator),
-      m_globalSmoothing(globalSmoothing)
+      m_globalSmoothing(globalSmoothing), m_globalAverage(globalAverage)
 {
-    m_dataBridge = new DataBridge(m_sourceList, m_globalSmoothing, this);
+    m_dataBridge = new DataBridge(m_sourceList, m_globalSmoothing, m_globalAverage, this);
     m_sourceTreeBridge = new SourceTreeBridge(m_sourceList, this);
     m_settingsBridge = new SettingsBridge(m_sourceList, this);
 
@@ -30,6 +31,7 @@ JsFrontendManager::JsFrontendManager(SourceList *sourceList, Generator *generato
     m_channel->registerObject(QStringLiteral("settings"), m_settingsBridge);
     m_channel->registerObject(QStringLiteral("generator"), m_generator);
     m_channel->registerObject(QStringLiteral("globalSmoothing"), m_globalSmoothing);
+    m_channel->registerObject(QStringLiteral("globalAverage"), m_globalAverage);
 
     auto *outputDeviceModel = new audio::DeviceModel(this);
     outputDeviceModel->setScope(audio::DeviceModel::OutputOnly);

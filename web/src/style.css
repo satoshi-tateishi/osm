@@ -51,6 +51,20 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.157);
 }
 
+.pane-right-smoothing {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.pane-right-smoothing-half {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.pane-right-smoothing-half h2 {
+  margin-top: 0;
+}
+
 #status {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 0.8rem;

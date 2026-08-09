@@ -13,6 +13,7 @@ class SourceList;
 namespace Chart {
 
 class GlobalSmoothing;
+class GlobalAverage;
 
 // トップレベルのMeasurement全件についてサンプラー一式を保持し、各ソースの
 // readyRead()のたびに該当ソース分のJSONを配信する(複数ウィンドウではなく
@@ -21,7 +22,8 @@ class DataBridge : public QObject
 {
     Q_OBJECT
 public:
-    explicit DataBridge(SourceList *sourceList, GlobalSmoothing *globalSmoothing, QObject *parent = nullptr);
+    explicit DataBridge(SourceList *sourceList, GlobalSmoothing *globalSmoothing, GlobalAverage *globalAverage,
+                        QObject *parent = nullptr);
     ~DataBridge() override;
 
 signals:
@@ -38,6 +40,7 @@ private slots:
     void onItemRemoved(QUuid uuid);
     void onReadyRead();
     void onGlobalPointsPerOctaveChanged(unsigned int pointsPerOctave);
+    void onGlobalAverageSecondsChanged(unsigned int seconds);
 
 private:
     struct SamplerSet {
@@ -49,9 +52,11 @@ private:
     };
 
     void emitCurves(SamplerSet *samplers, unsigned int pointsPerOctave);
+    void applyGlobalAverage(const Shared::Source &item, unsigned int seconds);
 
     SourceList *m_sourceList;
     GlobalSmoothing *m_globalSmoothing;
+    GlobalAverage *m_globalAverage;
     QMap<QUuid, SamplerSet *> m_samplers;
 };
 

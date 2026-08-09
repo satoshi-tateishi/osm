@@ -92,35 +92,46 @@ QString PhaseSeriesSampler::sampleJson(unsigned int pointsPerOctave)
         return QString();
     }
 
+    // リファレンス入力が無音/未接続の場合、Averaging<Complex>::value()はcollected==0のとき
+    // 例外的にComplex(0)を返す(src/math/averaging.cpp)。この値からatan2で角度を求めると
+    // atan2(0,0)==0.0(有限)になり、Magnitude側のisfinite判定だけでは無効値として弾けない
+    // (magnitudeRawは0.fにクランプされるだけで非有限にはならないため)。QML版はcoherenceで
+    // 位相トレースの不透明度をフェードしている(phaseseriesrenderer.cpp)ため、JS版でも
+    // coherenceが十分低い帯域はnullとして扱う。
+    constexpr float COHERENCE_MIN = 0.05f;
+
     QJsonArray frequency, phaseDeg;
     Complex value(0);
     float magnitudePower = 0.f;
+    float coherenceSum = 0.f;
     bool hasData = false;
 
     m_source->lock();
     if (m_source->frequencyDomainSize()) {
         hasData = true;
 
-        auto accumulate = [this, &value, &magnitudePower](const unsigned int &i) {
+        auto accumulate = [this, &value, &magnitudePower, &coherenceSum](const unsigned int &i) {
             value += m_source->phase(i);
             auto m = m_source->magnitudeRaw(i);
             magnitudePower += m * m;
+            coherenceSum += m_source->coherence(i);
         };
 
-        auto collected = [&value, &magnitudePower, &frequency, &phaseDeg](const float &bandStart, const float &bandEnd,
-                                                                          const unsigned int &count) {
+        auto collected = [&value, &magnitudePower, &coherenceSum, &frequency,
+                          &phaseDeg](const float &bandStart, const float &bandEnd, const unsigned int &count) {
             auto avg = value / static_cast<float>(count);
             auto degrees = std::atan2(avg.imag, avg.real) * 180.0 / M_PI;
-            // 同じ帯域のMagnitudeが無効(無音/未接続でNaN・Infになる)場合、Phase自体の
-            // 生値がたまたま有限(0度)に見えても意味のあるデータではないため、あわせてnullにする。
             auto magnitudeDb = 10.0 * std::log10(magnitudePower / count);
-            bool valid = std::isfinite(degrees) && std::isfinite(magnitudeDb);
+            auto coherenceAvg = coherenceSum / static_cast<float>(count);
+            bool valid = std::isfinite(degrees) && std::isfinite(magnitudeDb)
+                         && std::isfinite(coherenceAvg) && coherenceAvg > COHERENCE_MIN;
 
             frequency.append((bandStart + bandEnd) / 2.0);
             phaseDeg.append(valid ? QJsonValue(degrees) : QJsonValue());
 
             value = Complex(0);
             magnitudePower = 0.f;
+            coherenceSum = 0.f;
         };
 
         iterate(pointsPerOctave, accumulate, collected);

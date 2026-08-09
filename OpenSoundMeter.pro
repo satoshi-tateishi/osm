@@ -22,6 +22,7 @@ SOURCES += src/main.cpp \
     src/chart/cursorhelper.cpp \
     src/chart/frequencybasedplot.cpp \
     src/chart/globalsmoothing.cpp \
+    src/chart/globalaverage.cpp \
     src/chart/frequencybasedserieshelper.cpp \
     src/chart/seriessampler.cpp \
     src/chart/databridge.cpp \
@@ -187,6 +188,7 @@ HEADERS += \
     src/chart/cursorhelper.h \
     src/chart/frequencybasedplot.h \
     src/chart/globalsmoothing.h \
+    src/chart/globalaverage.h \
     src/chart/frequencybasedserieshelper.h \
     src/chart/seriessampler.h \
     src/chart/databridge.h \
