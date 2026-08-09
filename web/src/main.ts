@@ -3,6 +3,7 @@ import * as charts from './charts'
 import { renderMeasurementList, updateMeasurementMeter, type MeasurementItem } from './measurementList'
 import { renderSourceTree, type TreeItem } from './sourceTree'
 import { renderSettingsPanel, renderMeter, type SettingsPayload, type MeterPayload } from './settingsPanel'
+import { closeSettingsPopover, getOpenSettingsUuid, getSettingsPopoverContentIfOpenFor, openSettingsPopover, repositionSettingsPopover } from './settingsPopover'
 import { channelReady, connectWebChannel } from './webchannel'
 import { setupGeneratorPanel } from './generatorPanel'
 
@@ -28,8 +29,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <div class="pane-right-scroll">
       <h2>Transfer Function</h2>
       <div id="measurement-list"></div>
-      <h2>Settings</h2>
-      <div id="settings-panel"><p class="placeholder">左のリストからソースを選択してください</p></div>
     </div>
     <div class="pane-right-generator">
       <h2>Generator</h2>
@@ -40,7 +39,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 const statusEl = document.querySelector<HTMLParagraphElement>('#status')!
 const sourceTreeEl = document.querySelector<HTMLDivElement>('#source-tree')!
 const measurementListEl = document.querySelector<HTMLDivElement>('#measurement-list')!
-const settingsPanelEl = document.querySelector<HTMLDivElement>('#settings-panel')!
 const generatorPanelEl = document.querySelector<HTMLDivElement>('#generator-panel')!
 const centerPaneEl = document.querySelector<HTMLDivElement>('.pane-center')!
 const canvases: charts.ChartCanvases = {
@@ -74,8 +72,11 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
   let currentSettingsUuid: string | null = null
 
   function renderPanel(payload: SettingsPayload) {
+    if (!payload.uuid) return
+    const content = getSettingsPopoverContentIfOpenFor(payload.uuid)
+    if (!content) return
     currentSettingsUuid = payload.uuid
-    renderSettingsPanel(settingsPanelEl, payload, {
+    renderSettingsPanel(content, payload, {
       onChange: (name, value) => {
         const enumSetters: Record<string, string> = {
           mode: 'setMode',
@@ -93,6 +94,7 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
       onResetAverage: () => settings.resetAverage(payload.uuid),
       onStore: () => settings.store(payload.uuid),
     })
+    repositionSettingsPopover()
   }
 
   sourceTree.treeChanged.connect((json: string) => {
@@ -123,6 +125,14 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
       onToggleActive: (uuid, active) => sourceTree.setActive(uuid, active),
       onSelect: (uuid) => {
         charts.setSpectrogramSource(uuid, canvases.spectrogram)
+      },
+      onOpenSettings: (uuid, anchorEl) => {
+        if (getOpenSettingsUuid() === uuid) {
+          closeSettingsPopover()
+          currentSettingsUuid = null
+          return
+        }
+        openSettingsPopover(uuid, anchorEl)
         settings.selectSource(uuid)
       },
       onAddMeasurement: () => sourceList.addMeasurement(),
@@ -144,7 +154,7 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
       return
     }
     updateMeasurementMeter(measurementListEl, payload.uuid, payload)
-    if (payload.uuid === currentSettingsUuid) {
+    if (payload.uuid === currentSettingsUuid && getSettingsPopoverContentIfOpenFor(payload.uuid)) {
       renderMeter(payload)
     }
   })
@@ -166,8 +176,9 @@ channelReady.then(({ sourceTree, chartData, settings, generator, outputDevices, 
   })
   chartData.sourceRemoved.connect((uuid: string) => {
     charts.removeSource(uuid, canvases)
-    if (currentSettingsUuid === uuid) {
-      renderPanel({ uuid: null })
+    if (getOpenSettingsUuid() === uuid) {
+      closeSettingsPopover()
+      currentSettingsUuid = null
     }
   })
 

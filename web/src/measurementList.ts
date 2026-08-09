@@ -8,6 +8,7 @@ export interface MeasurementItem {
 export interface MeasurementCallbacks {
   onToggleActive: (uuid: string, active: boolean) => void
   onSelect: (uuid: string) => void
+  onOpenSettings: (uuid: string, anchor: HTMLElement) => void
   onAddMeasurement: () => void
 }
 
@@ -31,6 +32,7 @@ export function renderMeasurementList(container: HTMLElement, items: Measurement
           <input type="checkbox" class="measurement-active" ${item.active ? 'checked' : ''} />
           <span class="tree-swatch" style="background:${item.color}"></span>
           <span class="measurement-name${item.active ? '' : ' tree-inactive'}">${escapeHtml(item.name)}</span>
+          <button type="button" class="measurement-gear" data-gear title="Settings">&#9881;</button>
         </div>
         <div class="meter-group">
           <div class="meter-line">
@@ -63,8 +65,12 @@ export function renderMeasurementList(container: HTMLElement, items: Measurement
     })
   })
   container.querySelectorAll<HTMLElement>('.measurement-row').forEach((row) => {
+    const uuid = row.dataset.uuid!
+    row.querySelector<HTMLButtonElement>('[data-gear]')?.addEventListener('click', (event) => {
+      event.stopPropagation()
+      callbacks.onOpenSettings(uuid, event.currentTarget as HTMLElement)
+    })
     row.addEventListener('click', () => {
-      const uuid = row.dataset.uuid!
       container.querySelectorAll('.measurement-row.selected').forEach((element) => element.classList.remove('selected'))
       row.classList.add('selected')
       selectedUuid = uuid
