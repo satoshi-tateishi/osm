@@ -17,6 +17,7 @@
  */
 #include <QApplication>
 #include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QtQuick/QQuickView>
 #include <QQuickStyle>
 #include <QQmlContext>
@@ -142,16 +143,25 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("remoteServer", &server);
     engine.rootContext()->setContextProperty("remoteClient", &client);
 
-    std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
-    if (qEnvironmentVariableIsSet("OSM_JS_FRONTEND")) {
-        jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
-            sourceList.get(), generator.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
-    }
-
     engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
 
     if (engine.rootObjects().isEmpty())
         return -1;
+
+    const bool qmlFrontendRequested = qEnvironmentVariableIsSet("OSM_QML_FRONTEND");
+    const bool jsFrontendDisabled = qEnvironmentVariableIsSet("OSM_JS_FRONTEND_DISABLE");
+
+    std::unique_ptr<Chart::JsFrontendManager> jsFrontendManager;
+    if (!jsFrontendDisabled) {
+        jsFrontendManager = std::make_unique<Chart::JsFrontendManager>(
+            sourceList.get(), generator.get(), qEnvironmentVariableIsSet("OSM_JS_DEV_SERVER"), &app);
+
+        if (!qmlFrontendRequested) {
+            if (auto *qmlWindow = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+                qmlWindow->hide();
+            }
+        }
+    }
 
     return QApplication::exec();
 }

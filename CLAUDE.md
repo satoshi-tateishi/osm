@@ -37,9 +37,9 @@ Open Sound Meter (OpenSoundMeter) — Qt 5.15 / C++17製のクロスプラット
 
 起動中のまま`make`だけ実行すると、ソースに差分がない場合は`make`が何もせず終わる(`Nothing to be done`)ため、「起動中だから反映されなかった」と誤解しやすい。実際は単にビルド対象がなかっただけだが、確認しているものが確実に最新ビルドであると保証するため、この順序を徹底する。
 
-### 実験的JSフロントエンドの起動方法
+### フロントエンドの起動方法
 
-別ターミナルで`cd web && npm run dev`を起動し、`OSM_JS_FRONTEND=1 OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`を実行する。qrc同梱版を確認する場合は先に`cd web && npm run build`してアプリを再ビルドし、`OSM_JS_FRONTEND=1`だけを付けてバイナリを直接実行する。環境変数を付けない通常起動ではJSウィンドウは生成されない。
+環境変数なしの通常起動ではJS版がデフォルトUIとして表示され、QML版はメニューバー等のインフラを提供するため裏で読み込まれるがウィンドウは非表示になる。Vite開発サーバーを使う場合は、別ターミナルで`cd web && npm run dev`を起動し、`OSM_JS_DEV_SERVER=1 ./build/OpenSoundMeter.app/Contents/MacOS/OpenSoundMeter`を実行する。qrc同梱版は先に`cd web && npm run build`してアプリを再ビルドする。従来のQML版だけを表示する場合は`OSM_JS_FRONTEND_DISABLE=1`、JS版とQML版を同時表示して比較する場合は`OSM_QML_FRONTEND=1`を付ける。
 
 ## このフォークでの変更点(本家との差分)
 

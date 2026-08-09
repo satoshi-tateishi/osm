@@ -472,3 +472,13 @@
 - Session Dataに`+ Group`と確認ダイアログ付き削除ボタン、Transfer Functionに`+ Measurement`を追加し、WebChannelへ公開済みのルート`sourceList`を呼び出す。Groupの祖先のいずれかが非アクティブなら、子孫のチェック状態自体は変えずチェックボックスだけをグレー表示する。
 - Session Dataの各行へ名前編集ボタンを追加し、名前のダブルクリックでも編集できるようにした。Web側ではツリー全体の同名を拒否し、バックエンドの`SourceTreeBridge::setName()`でも同じ階層の兄弟間に重複がないことを防御的に検査する。祖先Groupが非アクティブな子孫は、チェックボックスに加えてデータ名もグレー表示する。
 - `SourceList::appendItem()`で追加先リストの兄弟名を検査し、衝突時は元の名前へ`_copy-2`、`_copy-3`…を自動付与する。Store・複製だけでなく全追加経路に共通で適用されるため、既存セッションに同一階層の重複名が含まれる場合も、読み込み時に同じ規則で自動リネームされる。
+
+### Phase 13完了(JS版をデフォルトUIへ昇格、QML版は裏方として存続)
+
+`src/main.cpp`、`CLAUDE.md`、`dev-docs/js-frontend-phases.md`
+
+- Phase 6〜12でSmaart v9風の3ペインUIが実用レベルに達したため、環境変数なしの通常起動でJS版を表示するよう起動条件を反転した。従来の`OSM_JS_FRONTEND`は不要になり、`OSM_JS_DEV_SERVER=1`は引き続きqrc同梱版の代わりにVite開発サーバーを読み込む。
+- QMLコードは削除していない。QMLエンジンはmacOSネイティブメニューバー、Autosaver、Notifier等のアプリ全体のインフラを含んでおり、これらをJS/C++側へ移植する前に削除すると退行リスクが高いためである。QMLは常に読み込む一方、通常起動ではルート`QQuickWindow`を`hide()`し、JSウィンドウだけを表示する。
+- `OSM_JS_FRONTEND_DISABLE=1`はJS版を生成せず従来のQML版だけを表示するフォールバック/デバッグ用、`OSM_QML_FRONTEND=1`はJS版に加えてQML版も表示する比較確認用である。両方を同時指定した場合はJS無効化が優先され、QML版だけが表示される。
+- QML依存インフラの移植と、JS版で意図的にスコープ外としたセッション新規UI、CSVエクスポート、キャリブレーションUI、詳細チャート設定、Stored recall等の扱いが確定するまでは、QML側コードの削除を行わない。
+- `web`のTypeScript/Vite本番ビルドとQt 5.15.2のシャドウビルドが成功した。macOS実機では、通常起動=`OSM`(JS)1枚、`OSM_JS_FRONTEND_DISABLE=1`=`Open Sound Meter`(QML)1枚、`OSM_QML_FRONTEND=1`=両方の2枚となることを確認した。通常起動でもネイティブメニューバーの`File`/`View`/`Help`と各項目が残り、複数回の起動モード切り替えでも安定していたため、QMLウィンドウの扱いは`showMinimized()`や画面外移動ではなく`hide()`を採用した。
